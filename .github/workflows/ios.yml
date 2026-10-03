@@ -61,7 +61,7 @@ jobs:
           set -euo pipefail
           app='build/DerivedData/Build/Products/Release-iphoneos/CameraLog.app'
           test -f "$app/CameraLog"
-          lipo -verify_arch arm64 "$app/CameraLog"
+          lipo "$app/CameraLog" -verify_arch arm64
           mkdir -p build/package/Payload
           ditto "$app" build/package/Payload/CameraLog.app
           cd build/package
