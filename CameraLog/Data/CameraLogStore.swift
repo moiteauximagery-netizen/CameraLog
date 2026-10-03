@@ -20,8 +20,15 @@ enum CameraLogStore {
 
 /// One main-actor context, explicit commits. Failed writes roll back; never acknowledge an unsaved take.
 @MainActor final class CameraLogRepository {
+    // ModelContext does not keep its container alive. The repository must own
+    // both so an independently created repository can safely insert models.
+    private let container: ModelContainer
     let context: ModelContext
-    init(context: ModelContext) { self.context = context; context.autosaveEnabled = false }
+    init(context: ModelContext) {
+        container = context.container
+        self.context = context
+        context.autosaveEnabled = false
+    }
 
     private func commit() throws {
         do { try context.save() }
