@@ -1,0 +1,89 @@
+name: iOS - Tests et IPA pour iPhone
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # Standard public-repository runner only: no paid runner or private build.
+    if: github.event.repository.private == false
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Environnement Apple et structure du projet
+        run: |
+          xcodebuild -version
+          python3 scripts/check_project.py
+          plutil -lint CameraLog.xcodeproj/project.pbxproj
+
+      - name: Choisir un simulateur iPhone disponible
+        run: python3 scripts/select_simulator.py
+
+      - name: Tests XCTest sur simulateur
+        run: |
+          set -o pipefail
+          mkdir -p build
+          xcodebuild test \
+            -project CameraLog.xcodeproj -scheme CameraLog \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+            -destination-timeout 180 \
+            -parallel-testing-enabled NO \
+            -derivedDataPath build/DerivedData \
+            -resultBundlePath build/CameraLogTests.xcresult \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/tests.log
+
+      - name: Compiler pour un vrai iPhone (ARM64)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project CameraLog.xcodeproj -scheme CameraLog \
+            -configuration Release -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            2>&1 | tee build/device-build.log
+
+      - name: Préparer CameraLog.ipa pour signature locale
+        run: |
+          set -euo pipefail
+          app='build/DerivedData/Build/Products/Release-iphoneos/CameraLog.app'
+          test -f "$app/CameraLog"
+          lipo -verify_arch arm64 "$app/CameraLog"
+          mkdir -p build/package/Payload
+          ditto "$app" build/package/Payload/CameraLog.app
+          cd build/package
+          ditto -c -k --keepParent Payload ../CameraLog.ipa
+          cd ../..
+          python3 scripts/check_ipa.py build/CameraLog.ipa
+
+      - name: Fichier à télécharger pour Sideloadly
+        uses: actions/upload-artifact@v4
+        with:
+          name: CameraLog-iPhone-unsigned
+          path: build/CameraLog.ipa
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Journaux et résultats des tests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CameraLog-diagnostics
+          path: |
+            build/*.log
+            build/CameraLogTests.xcresult
+          if-no-files-found: ignore
+          retention-days: 3
