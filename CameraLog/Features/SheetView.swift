@@ -103,6 +103,14 @@ struct SheetView: View {
             autosave()
         }
         .onChange(of: draft.savedContent) { _, _ in scheduleAutosave() }
+        .onReceive(NotificationCenter.default.publisher(for: UITextField.textDidBeginEditingNotification)) { note in
+            // A take box opens with the cursor after the text: typing « PU » on « 1 » gives « 1PU ».
+            guard labelTakeID != nil, focus == nil, let field = note.object as? UITextField else { return }
+            DispatchQueue.main.async {
+                let end = field.endOfDocument
+                field.selectedTextRange = field.textRange(from: end, to: end)
+            }
+        }
         .onChange(of: focus) { old, new in
             // Scene, plan and roll are saved when their box is left, never mid-typing.
             if let old, SheetField.identification.contains(old), old != new { autosave() }
