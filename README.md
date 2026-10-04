@@ -10,7 +10,7 @@ Le projet inclut une compilation GitHub Actions sur runner macOS standard pour d
 
 Le rapport caméra fonctionne par **fiches** : une fiche par scène/plan et par roll, sur laquelle on saisit l'identification, les réglages, les prises et le cerclage, sans écran séparé par plan. La liste du rapport regroupe automatiquement les fiches par roll.
 
-[Run GitHub Actions de référence du 4 octobre 2026](https://github.com/moiteauximagery-netizen/CameraLog/actions/runs/37205433088) : 27 tests sur 27 réussis (24 unitaires, 3 d'interface) sur simulateur iPhone SE, iOS 26.2, compilation Release ARM64 et `CameraLog.ipa` (artefact **CameraLog-iPhone-unsigned**, conservé sept jours). Détail dans [le protocole de validation](docs/VALIDATION.md). Les tests tournent sur simulateur ; **aucune de ces fonctions n'a encore été éprouvée sur un véritable iPhone ni en conditions de tournage.**
+[Run GitHub Actions de référence du 4 octobre 2026](https://github.com/moiteauximagery-netizen/CameraLog/actions/runs/37216539824) (build 26) : 36 tests sur 36 réussis (32 unitaires, 4 d'interface) sur simulateur iPhone SE, iOS 26.2, compilation Release ARM64 et `CameraLog.ipa` (artefact **CameraLog-iPhone-unsigned**, conservé sept jours). Détail dans [le protocole de validation](docs/VALIDATION.md). Les tests tournent sur simulateur ; **aucune de ces fonctions n'a encore été éprouvée sur un véritable iPhone ni en conditions de tournage.**
 
 ## Ouvrir sur Mac
 
@@ -36,15 +36,19 @@ Le projet Xcode est fourni, sans dépendance à XcodeGen, CocoaPods ou un packag
 ## Parcours disponible
 
 - Créer une production, puis une journée : elle démarre avec CAM A. **Ajouter la caméra B** (puis C…) se fait en un toucher, sans formulaire. Reprendre le rapport le plus récent depuis l'accueil.
-- Tout reste modifiable : **Réglages** d'une production (informations, série d'objectifs, kit de filtres), **Modifier** une journée (numéro, date, lieu, unité, notes), balayer une caméra pour la modifier (nom, modèle, n° de série) ou la retirer de la journée, toucher l'en-tête d'un roll pour le renommer ou saisir card et reel.
+- Tout reste modifiable : **Réglages** d'une production (informations, séries d'objectifs, kit de filtres, listes LUT/ratio/format/résolution, cases affichées), **Modifier** une journée (numéro, date, lieu, unité, notes), balayer une caméra pour la modifier (nom, **couleur**, **ISO natif**, modèle, n° de série) ou la retirer de la journée, toucher l'en-tête d'un roll pour le renommer ou saisir magasin et reel.
+- Chaque caméra a une couleur (A rouge, B bleue, C verte… par défaut, ou gris) affichée sur la journée, sur chaque fiche et dans le PDF.
 - Chaque écran se met à jour immédiatement après une création ou une modification.
 - Dans le rapport (une caméra, une journée), toucher **Nouvelle fiche**. La fiche contient :
-  - l'identification : scène, plan, **roll** (par exemple A010) ;
-  - les réglages : objectif, diaph, filtres, ISO, température, FPS, shutter ;
+  - l'identification : scène, plan, **roll** (la lettre de la caméra est imposée : sur CAM A on tape « 001 », « 1 » devient A001) et **MAG #** (le magasin, c'est-à-dire la carte du roll) ;
+  - les réglages : objectif, diaph, filtres, ISO, température, FPS, shutter, LUT, ratio, format, résolution ;
+  - le bloc **VFX** : son interrupteur affiche hauteur caméra, distance de mise au point et tilt ; les prises créées pendant qu'il est actif reçoivent le statut VFX ;
   - la section **Takes**, son bouton **+** et le bouton **Cerclage** ;
   - un commentaire.
 - La liste du rapport regroupe les fiches par roll, avec le nombre de clips de chaque carte. Toucher une fiche l'ouvre pour y travailler directement. Balayer une fiche permet de la supprimer, après affichage des clips renumérotés.
-- Recherche par scène/plan (« 14A »), roll ou objectif.
+- Recherche par scène/plan (« 14A »), roll ou objectif dans un rapport, et **recherche globale** sur la page de la production : texte libre et pastilles Jour · Caméra · Roll · Séquence · Statut (plusieurs choix par pastille), résultats par jour/caméra/roll avec compteur, interrupteur **Fiches / Prises** ; toucher un résultat ouvre la fiche.
+- **Enregistrement automatique** : pas de bouton ; les réglages sont enregistrés ¾ de seconde après la dernière frappe, scène/plan/roll en quittant leur case. L'en-tête indique « Fiche enregistrée » ou ce qui manque ; tant qu'une fiche ne peut pas être enregistrée, « Abandonner » ou « Rétablir » remplace le retour.
+- **Exporter** (journée ou rapport caméra) : PDF lisible, CSV compatible ZoeLog/Silverstack, JSON au format ZoeLog, partagés par la feuille de partage iOS (voir plus bas).
 - Charger volontairement LES OMBRES depuis l'écran vide. Les données d'exemple ne sont jamais injectées automatiquement.
 
 ### SmartFill : suggérer sans imposer
@@ -61,7 +65,9 @@ Le plan proposé est le **plan suivant** : 2 → 3, 09 → 10, A → B, 14A → 
 
 ### Objectifs, diaph et filtres en un toucher
 
-- **Objectif** : dans les réglages du projet, saisir la série (« 18, 25, 32, 50, 75 »). La case OBJECTIF affiche alors une flèche ; elle ouvre la liste des focales. Toucher le texte de la case permet toujours une valeur libre. Sans série, pas de flèche.
+- **Objectif** : dans les réglages du projet, créer des séries (nom court et focales : « S4 » · « 18, 25, 32, 50, 75 »). La flèche de la case OBJECTIF montre chaque série et ses focales ; la case reçoit « S4 50mm ». Toucher le texte de la case permet toujours une valeur libre. Sans série, pas de flèche.
+- **LUT, ratio, format, résolution** : même principe avec les listes des réglages du projet.
+- **ISO** : l'ISO natif de la caméra est proposé en gris quand aucune fiche précédente ne propose d'ISO.
 - **Diaph** : la flèche de la case DIAPH ouvre les diaphs pleins (1 → 22), chacun suivi de ses tiers : « 2.8 », « 2.8 ⅓ », « 2.8 ⅔ ».
 - **Filtres** : le projet a un kit de familles et de valeurs (par défaut ND et IRND 0.3 → 2.1, BPM, HBM et Glimmer 1/8 → 1, POLA), modifiable dans les réglages du projet. La flèche de la case FILTRES montre chaque famille avec ses valeurs : un toucher ajoute le filtre, une autre valeur de la même famille le remplace, toucher une valeur choisie la retire. Les filtres se combinent : « ND 0.9 + BPM 1/4 ».
 
@@ -73,8 +79,9 @@ La case **Roll** se remplit comme les autres. À l'enregistrement, la fiche est 
 
 - **+** crée la prise suivante de la fiche (1, 2, 3…) en un geste. Si la fiche n'est pas encore enregistrée, ou si elle a été modifiée, + l'enregistre d'abord.
 - Chaque prise conserve un **instantané des réglages** de la fiche au moment de sa création. Modifier ensuite la fiche ne réécrit pas les prises existantes ; l'édition d'une prise affiche son instantané.
-- En mode normal, toucher une prise **transforme sa case en champ de saisie** : taper « PU » (ou « 4PU ») puis OK, ou utiliser les raccourcis **PU** / **FC** / Effacer au-dessus du clavier. La case affiche alors « 4PU ». Le libellé ne change ni le numéro de prise, ni le clip, ni Circle. Un appui long sur une prise (ou « Détails » au-dessus du clavier) ouvre les statuts (MOS, VFX…), le commentaire, les réglages enregistrés et la suppression.
-- **FC** (faux clip) désigne un clip réellement créé sur la caméra mais inexploitable : c'est une entrée de la séquence, qui occupe donc un numéro de clip. Il n'a aucun lien avec Circle.
+- En mode normal, toucher une prise **transforme sa case en champ de saisie**, curseur après le texte : taper « PU » sur « 4 » donne « 4PU » ; on peut aussi tout réécrire, numéro compris. Raccourcis au-dessus du clavier : **PU** (garde le numéro), **FC** (retire le numéro), Effacer, Détails.
+- **Appui long** sur une prise : PU, FC, Effacer le libellé, Détails… (statuts, commentaire, réglages enregistrés) et Supprimer, après confirmation montrant les clips renumérotés.
+- **FC** (faux clip) désigne un clip réellement créé sur la caméra mais inexploitable : c'est une entrée de la séquence, qui occupe donc un numéro de clip, mais **pas de numéro de prise** : la prise suivante reprend le numéro libéré. Un numéro déjà utilisé dans la fiche est refusé. FC n'a aucun lien avec Circle.
 - Le bouton **Cerclage** active un mode où toucher une prise la cercle ou la décercle immédiatement. Le mode actif est signalé par le bouton orange plein, un bandeau orange « CERCLAGE ACTIF » et un cadre orange épais autour des prises. Toucher à nouveau Cerclage rend au toucher son rôle d'édition. Les prises cerclées sont orange, avec une coche.
 - VoiceOver : le bouton est annoncé « Mode cerclage, activé/désactivé » ; chaque prise « Prise 3, clip C005, libellé PU, cerclée/non cerclée », avec une consigne qui dépend du mode. Les changements de mode et les ajouts de prise sont annoncés. Les flèches des cases sont annoncées « Choisir objectif/diaphragme/filtres dans la liste ».
 
@@ -94,6 +101,14 @@ Les actions qui modifient des numéros déjà affichés montrent **avant confirm
 
 Aucune autre action ne renumérote l'historique.
 
+### Export : PDF, CSV Silverstack, JSON
+
+Les fichiers CSV et JSON reprennent exactement ceux de ZoeLog, relevés sur de vrais exports le 4 octobre 2026 : 26 colonnes (`Scene, Date, Camera, Roll, Take, Clip, Circled, Lens, Filters, Stop, Focus, Lens Height, Color Temp, FPS, Shutter, ISO, Time Code, Tilt, Lut, Aspect Ratio, Format, Resolution, Description, Notes, Origin Date, Take Origin`), valeurs avec unités (`50mm`, `T2.8 1/3`, `5600K`, `23.976fps`, `172.8 degrees`, `800EI`), Circled `true`/`false`, clip entier par carte (FC compris), fins de ligne CRLF. Une ligne par prise dans l'ordre de la carte, avec l'instantané de réglages de la prise. Scène et plan sont réunis : « 14A », ou « 24/3 » quand le plan est un nombre.
+
+Dans Silverstack (Import → ZoeLog CSV…), apparier par **Camera + Clip** : il faut que la séquence CameraLog corresponde à la carte, FC compris. Le timecode n'est pas saisi ; Origin Date et Take Origin sont les heures de saisie, pas d'enregistrement. **L'import dans un vrai Silverstack n'a pas encore été essayé.**
+
+Le PDF (A4 paysage) a sa propre mise en page : en-tête production/DAY/date/lieu/équipe, un bloc par caméra (couleur, boîtier) et par roll (clips, magasin, reel), une ligne par prise (clip, scène, prise entourée si cerclée, objectif, diaph, filtres, ISO, K, FPS, shutter, notes avec VFX et réglages d'image), FC grisés, cerclées par scène.
+
 ## Données existantes et mise à jour
 
 La version précédente stockait une entrée `TakeEntry` par prise, rattachée à un roll, avec un nom de clip libre. À la première ouverture de cette version :
@@ -105,7 +120,7 @@ La version précédente stockait une entrée `TakeEntry` par prise, rattachée �
 
 Les anciennes prises n'avaient pas de libellé : il reste vide.
 
-La version suivante (schéma 3) ajoute seulement la série d'objectifs et le kit de filtres de chaque production, en champs facultatifs. Une base de la build 15 s'ouvre sans conversion de données : la série d'objectifs est vide et le kit de filtres est le kit standard, jusqu'à modification dans les réglages du projet. Une base mise à jour ne peut plus être ouverte par l'ancienne version de l'app. Pour conserver les données, installer le nouvel IPA par-dessus l'ancien avec le même compte Apple dans Sideloadly, sans désinstaller l'app.
+Les versions suivantes n'ajoutent que des champs facultatifs : le schéma 3 (builds 16 à 22) la série d'objectifs et le kit de filtres de chaque production ; le schéma 4 (build 25) les séries d'objectifs, les listes LUT/ratio/format/résolution et les cases affichées du projet, la couleur et l'ISO natif des caméras. Les nouvelles cases de la fiche (MAG #, LUT, VFX…) sont rangées dans les réglages existants et la carte du roll, sans migration. Une base de la build 15 s'ouvre sans conversion de données : la série d'objectifs est vide et le kit de filtres est le kit standard, jusqu'à modification dans les réglages du projet. Une base mise à jour ne peut plus être ouverte par l'ancienne version de l'app. Pour conserver les données, installer le nouvel IPA par-dessus l'ancien avec le même compte Apple dans Sideloadly, sans désinstaller l'app.
 
 ## Décisions et limites
 

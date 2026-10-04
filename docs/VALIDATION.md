@@ -10,14 +10,18 @@ Chaque run du workflow `iOS - Tests et IPA pour iPhone` :
 
 1. Écrit deux bases de données avec le **code réellement livré** :
    - avant les fiches (commit 241fd6e, IPA du run 7), via `ci/legacy/LegacyFixtureWriter.swift` : deux rolls, quatre prises, un nom de clip saisi, Circle, VFX, une scène/plan sur deux rolls ;
-   - avec les fiches (commit 20df5d9, IPA build 15), via `ci/legacy/Build15FixtureWriter.swift` : libellé FC, Circle et VFX, prise insérée tardivement, réglages modifiés après les prises, deux rolls, lieu de la journée.
+   - avec les fiches (commit 20df5d9, IPA build 15), via `ci/legacy/Build15FixtureWriter.swift` : libellé FC, Circle et VFX, prise insérée tardivement, réglages modifiés après les prises, deux rolls, lieu de la journée ;
+   - avec les kits du projet (commit 90ec24a, IPA build 18), via `ci/legacy/Build18FixtureWriter.swift` : série d'objectifs, kit de filtres, FC sans numéro, 2PU cerclée, roll A002 et carte E.
 2. Exécute les tests unitaires et les tests d'interface de la version courante sur un simulateur iPhone, en leur donnant ces bases.
 3. Compile l'app en Release ARM64 pour iPhone et prépare `CameraLog.ipa`, non signé.
 4. Publie la liste des tests exécutés dans une annotation « Tests exécutés » du run, et les captures d'écran des tests d'interface dans l'artefact **CameraLog-diagnostics** (dossier `screenshots`).
 
-Run de référence : [37205433088](https://github.com/moiteauximagery-netizen/CameraLog/actions/runs/37205433088), build 17, 27 tests réussis sur 27, IPA produit. Un run précédent (37198308287) avait échoué sur `testNewSheetShowsSuggestionsWithoutFillingFields`, qui vérifiait l'interface sans attendre sa mise à jour ; le test attend désormais explicitement. Les tests ont tourné sur **iPhone SE (3e génération), iOS 26.2** (le plus petit écran disponible sur le runner). Aucun runtime iOS 17 n'est installé sur ce runner : la compatibilité iOS 17 repose sur la cible de déploiement et les API utilisées, pas sur une exécution.
+Run de référence : [37216539824](https://github.com/moiteauximagery-netizen/CameraLog/actions/runs/37216539824), build 26, 36 tests réussis sur 36, IPA produit. La build 25 (même code, branche de travail) a été remise pour test sur iPhone. Un run précédent (37198308287) avait échoué sur `testNewSheetShowsSuggestionsWithoutFillingFields`, qui vérifiait l'interface sans attendre sa mise à jour ; le test attend désormais explicitement. Les tests ont tourné sur **iPhone SE (3e génération), iOS 26.2** (le plus petit écran disponible sur le runner). Aucun runtime iOS 17 n'est installé sur ce runner : la compatibilité iOS 17 repose sur la cible de déploiement et les API utilisées, pas sur une exécution.
 
-## Tests unitaires (24)
+## Tests unitaires (32)
+
+Aux tests ci-dessous s'ajoutent : `testRollLetterIsImposedByTheCamera`, `testTakeBoxCanBeRewrittenEntirely`, `testProjectSearchFiltersByDayCameraRollSequenceAndStatus`, `testExportsMatchTheZoeLogFilesReadBySilverstack` (CSV comparé ligne à ligne au format ZoeLog, JSON, PDF), `testOpeningAStoreWrittenByBuild18`, `testVFXSwitchShowsHeightFocusTiltAndMarksTakes`, `testMagazineImageFieldsCatalogAndHiddenBoxes`, `testCameraColorNativeISOAndLensSeries`.
+
 
 | Test | Vérifie |
 | --- | --- |
@@ -45,7 +49,10 @@ Run de référence : [37205433088](https://github.com/moiteauximagery-netizen/Ca
 | `testInlineTakeLabel` | « 4PU » sur la prise 4 donne PU ; Circle, statuts et commentaire intacts ; rien d'écrit si inchangé |
 | `testHierarchyAndCreation`, `testSampleData` | Graphe complet et données LES OMBRES |
 
-## Tests d'interface (3)
+## Tests d'interface (4)
+
+S'ajoutent aux trois ci-dessous : `testProjectSearchWithFiltersAndTakesMode` (filtre Statut Cerclée, vue Prises, ouverture de la fiche), et dans les tests existants la réécriture complète d'une case (« 1PU » puis « FC »), le menu d'appui long, l'enregistrement automatique vérifié en rouvrant la fiche, le bloc VFX, l'ISO natif d'une caméra et la préparation de l'export.
+
 
 Ils pilotent la vraie interface sur le simulateur, avec LES OMBRES en mémoire.
 
