@@ -47,6 +47,7 @@ products = []
 for name, source_dir, extension, product_type in (
     ("CameraLog", "CameraLog", "app", "application"),
     ("CameraLogTests", "CameraLogTests", "xctest", "bundle.unit-test"),
+    ("CameraLogUITests", "CameraLogUITests", "xctest", "bundle.ui-testing"),
 ):
     refs, builds = [], []
     for file in sorted((ROOT / source_dir).rglob("*.swift")):
@@ -73,10 +74,15 @@ for name, source_dir, extension, product_type in (
                       INFOPLIST_KEY_UISupportedInterfaceOrientations="UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight",
                       INFOPLIST_KEY_LSApplicationCategoryType="public.app-category.productivity")
     else:
-        values.update(TEST_HOST="$(BUILT_PRODUCTS_DIR)/CameraLog.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/CameraLog",
-                      BUNDLE_LOADER="$(TEST_HOST)")
-        proxy = add("test-proxy", f'isa = PBXContainerItemProxy; containerPortal = {ident("project")}; proxyType = 1; remoteGlobalIDString = {ident("CameraLog-target")}; remoteInfo = CameraLog;')
-        dependencies.append(add("test-dependency", f'isa = PBXTargetDependency; target = {ident("CameraLog-target")}; targetProxy = {proxy};'))
+        if product_type == "bundle.ui-testing":
+            values.update(TEST_TARGET_NAME="CameraLog")
+        else:
+            values.update(TEST_HOST="$(BUILT_PRODUCTS_DIR)/CameraLog.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/CameraLog",
+                          BUNDLE_LOADER="$(TEST_HOST)")
+        proxy_key = "test-proxy" if name == "CameraLogTests" else name + "-proxy"
+        dependency_key = "test-dependency" if name == "CameraLogTests" else name + "-dependency"
+        proxy = add(proxy_key, f'isa = PBXContainerItemProxy; containerPortal = {ident("project")}; proxyType = 1; remoteGlobalIDString = {ident("CameraLog-target")}; remoteInfo = CameraLog;')
+        dependencies.append(add(dependency_key, f'isa = PBXTargetDependency; target = {ident("CameraLog-target")}; targetProxy = {proxy};'))
     config = configs(name, values)
     targets.append(add(name + "-target", f'isa = PBXNativeTarget; buildConfigurationList = {config}; buildPhases = {array(phases)}; buildRules = (); dependencies = {array(dependencies)}; name = {name}; productName = {name}; productReference = {product}; productType = "com.apple.product-type.{product_type}";'))
 
@@ -109,8 +115,9 @@ reference(entry, "CameraLog", "app")
 test = ET.SubElement(scheme, "TestAction", buildConfiguration="Debug",
                      selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB",
                      selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB", shouldUseLaunchSchemeArgsEnv="YES")
-testable = ET.SubElement(ET.SubElement(test, "Testables"), "TestableReference", skipped="NO")
-reference(testable, "CameraLogTests", "xctest")
+testables = ET.SubElement(test, "Testables")
+for test_target in ("CameraLogTests", "CameraLogUITests"):
+    reference(ET.SubElement(testables, "TestableReference", skipped="NO"), test_target, "xctest")
 launch = ET.SubElement(scheme, "LaunchAction", buildConfiguration="Debug",
                        selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB",
                        selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB", launchStyle="0",

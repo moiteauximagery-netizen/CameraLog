@@ -17,7 +17,7 @@ struct DayView: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("CAM \(report.camera?.name ?? "—")").font(.title2.bold())
-                            Text("\(report.rolls.count) rolls · \(report.rolls.flatMap(\.takes).count) prises")
+                            Text("\(report.rolls.flatMap(\.currentSheets).count) fiches · \(report.rolls.flatMap(\.takes).count) prises")
                                 .foregroundStyle(.secondary)
                         }.padding(.vertical, 8)
                     }

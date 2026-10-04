@@ -10,7 +10,7 @@ assert len(definitions) == len(set(definitions)), "Duplicate object ID"
 references = set(re.findall(r"\b[A-F0-9]{24}\b", project))
 assert references == set(definitions), "Unresolved object reference"
 paths = re.findall(r'path = "([^"]+\.swift)";', project)
-actual = sorted(p.relative_to(root).as_posix() for folder in ("CameraLog", "CameraLogTests")
+actual = sorted(p.relative_to(root).as_posix() for folder in ("CameraLog", "CameraLogTests", "CameraLogUITests")
                 for p in (root / folder).rglob("*.swift"))
 assert sorted(paths) == actual, "Sources missing from Xcode project"
 for path in paths:
@@ -18,11 +18,11 @@ for path in paths:
 builds = re.findall(r"isa = PBXBuildFile; fileRef = ([A-F0-9]{24});", project)
 assert len(builds) == len(paths), "Missing/duplicate build source"
 assert len(set(builds)) == len(builds), "Duplicate file in build phase"
-assert project.count("isa = PBXNativeTarget;") == 2
-assert project.count('IPHONEOS_DEPLOYMENT_TARGET = "17.0"') == 6
+assert project.count("isa = PBXNativeTarget;") == 3
+assert project.count('IPHONEOS_DEPLOYMENT_TARGET = "17.0"') == 8
 scheme = ET.parse(root / "CameraLog.xcodeproj/xcshareddata/xcschemes/CameraLog.xcscheme")
 for ref in scheme.findall(".//BuildableReference"):
     assert ref.attrib["BlueprintIdentifier"] in definitions
-assert scheme.find(".//TestableReference") is not None
-print(f"PASS: {len(paths)} Swift files referenced, 2 targets, all object IDs resolved, shared test scheme present.")
+assert len(scheme.findall(".//TestableReference")) == 2
+print(f"PASS: {len(paths)} Swift files referenced, 3 targets, all object IDs resolved, shared test scheme present.")
 print("NOT RUN: Swift compiler, SwiftData runtime, XCTest, iOS UI.")

@@ -7,148 +7,390 @@ import SwiftData
         let container = try CameraLogStore.makeContainer(inMemory: true)
         return (container, CameraLogRepository(context: container.mainContext))
     }
-    private func hierarchy(_ repo: CameraLogRepository) throws -> (Production, CameraReport, Roll) {
+    private func report(_ repo: CameraLogRepository) throws -> (Production, CameraReport) {
         let production = try repo.addProduction(name: "Test")
         let day = try repo.addDay(to: production, number: 12, date: Date())
         let camera = try repo.addCamera(to: production, name: "A", model: "Custom body")
-        let report = try repo.addReport(to: day, camera: camera)
-        return (production, report, try repo.addRoll(to: report, name: "A004"))
+        return (production, try repo.addReport(to: day, camera: camera))
+    }
+    private func sheetDraft(_ scene: String, _ shot: String, roll: String,
+                            _ settings: [SheetField: String] = [:]) -> SheetDraft {
+        var draft = SheetDraft()
+        draft[.scene] = scene; draft[.shot] = shot; draft[.roll] = roll
+        for (field, value) in settings { draft[field] = value }
+        return draft
+    }
+    private func codes(_ roll: Roll) -> [String] {
+        roll.clipSequence.map { "\($0.shot)\($0.number)\($0.labelText)=\(ClipCode.code(roll.clipNumbers[$0.id] ?? 0))" }
+    }
+    private func temporaryStoreURL() throws -> (URL, URL) {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return (directory, directory.appendingPathComponent("test.store"))
     }
 
     func testHierarchyAndCreation() throws {
         let (container, repo) = try setupStore()
-        let (production, report, roll) = try hierarchy(repo)
+        let (production, report) = try report(repo)
         XCTAssertEqual(production.days.count, 1)
         XCTAssertEqual(production.cameras.count, 1)
         XCTAssertEqual(production.days.first?.reports.count, 1)
-        XCTAssertEqual(report.rolls.count, 1)
         XCTAssertEqual(report.camera?.model, "Custom body")
-        let take = try repo.addTake(to: roll, draft: TakeDraft())
-        XCTAssertEqual(roll.takes.count, 1)
+        let sheet = try repo.saveSheet(sheetDraft("14", "A", roll: "A010"), sheet: nil, in: report)
+        let take = try repo.addNextTake(to: sheet)
         XCTAssertEqual(take.roll?.report?.day?.production?.id, production.id)
+        XCTAssertEqual(take.sheet?.id, sheet.id)
         XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<TakeEntry>()), 1)
+        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<ShotSheet>()), 1)
     }
 
-    func testSmartFillCopiesSettingsButClearsPerTakeData() {
-        var previous = TakeDraft()
-        previous.scene = "24A"; previous.shot = "03"; previous.number = 4
-        previous.settings.lensName = "50mm"; previous.settings.filters = ["ND 0.6", "1/8 BPM"]
-        previous.settings.fps = 23.976; previous.settings.lut = "Show LUT"
-        previous.statuses = [.circle, .vfx]; previous.notes = "Only this take"
-        previous.tcIn = "01:00:00:00"; previous.clipName = "clip001"
-        let next = SmartFill.next(after: previous, defaults: CaptureSettings())
-        XCTAssertEqual(next.scene, "24A"); XCTAssertEqual(next.shot, "03"); XCTAssertEqual(next.number, 5)
-        XCTAssertEqual(next.settings, previous.settings)
-        XCTAssertTrue(next.statuses.isEmpty); XCTAssertTrue(next.notes.isEmpty)
-        XCTAssertTrue(next.tcIn.isEmpty); XCTAssertTrue(next.clipName.isEmpty)
-    }
-
-    func testRollChangeRetainsSettingsAndCameraHistoryIsIsolated() throws {
+    func testSuggestionIsDisplayedButNeverSaved() throws {
         let (_, repo) = try setupStore()
-        let (production, report, firstRoll) = try hierarchy(repo)
-        var draft = TakeDraft(); draft.settings.iso = 1250; draft.number = 3
-        try repo.addTake(to: firstRoll, draft: draft)
-        let secondRoll = try repo.addRoll(to: report, name: "A005")
-        let next = repo.nextDraft(for: report)
-        XCTAssertEqual(next.settings.iso, 1250); XCTAssertEqual(next.number, 4)
-        let take = try repo.addTake(to: secondRoll, draft: next)
-        XCTAssertEqual(take.roll?.name, "A005")
-        let cameraB = try repo.addCamera(to: production, name: "B")
-        let reportB = try repo.addReport(to: report.day!, camera: cameraB)
-        XCTAssertEqual(repo.nextDraft(for: reportB).settings.iso, 800)
-        XCTAssertEqual(repo.nextDraft(for: reportB).number, 1)
+        let (_, report) = try report(repo)
+        let previous = try repo.saveSheet(sheetDraft("14", "A", roll: "A010",
+            [.lens: "50 mm", .iso: "800", .whiteBalance: "5600", .filters: "ND 0.6"]), sheet: nil, in: report)
+        try repo.addNextTake(to: previous)
+
+        var draft = repo.newSheetDraft(for: report)
+        XCTAssertTrue(draft.values.isEmpty, "Suggestions must leave the fields really empty")
+        XCTAssertEqual(draft.suggestion(.lens), "50 mm")
+        XCTAssertEqual(draft.suggestion(.iso), "800")
+        XCTAssertEqual(draft.suggestion(.whiteBalance), "5600")
+        XCTAssertEqual(draft.suggestion(.filters), "ND 0.6")
+        XCTAssertEqual(draft.suggestion(.roll), "A010")
+        XCTAssertNil(draft.suggestion(.shot), "The plan is never suggested")
+        XCTAssertTrue(draft.isPending(.lens))
+        XCTAssertNil(draft.savedContent[SheetField.lens.rawValue])
+
+        draft[.scene] = "14"; draft[.shot] = "B"; draft[.roll] = "A010"
+        let sheet = try repo.saveSheet(draft, sheet: nil, in: report)
+        XCTAssertEqual(sheet.settings, [:], "Unaccepted suggestions must not be saved")
+        let take = try repo.addNextTake(to: sheet)
+        XCTAssertEqual(take.snapshot, [:])
+        let reopened = repo.draft(for: sheet, in: report)
+        XCTAssertEqual(reopened.value(.lens), "")
+        XCTAssertTrue(reopened.isPending(.lens), "Still shown greyed out when the sheet is reopened")
     }
 
-    func testCirclePreservesOtherStatusesAndHistoricSettings() throws {
+    func testAcceptingASuggestionAndTypingAnotherValue() throws {
         let (_, repo) = try setupStore()
-        let (_, report, roll) = try hierarchy(repo)
-        var draft = TakeDraft(); draft.statuses = [.vfx, .mos]
-        let take = try repo.addTake(to: roll, draft: draft)
-        try repo.toggleCircle(take)
+        let (_, report) = try report(repo)
+        try repo.saveSheet(sheetDraft("14", "A", roll: "A010",
+            [.lens: "50 mm", .iso: "800", .whiteBalance: "5600", .filters: "ND 0.6"]), sheet: nil, in: report)
+
+        var draft = repo.newSheetDraft(for: report)
+        draft.accept(.roll); draft.accept(.scene); draft[.shot] = "B"
+        draft.accept(.iso)
+        draft[.lens] = "85 mm"                       // typed over a pending suggestion, nothing to erase
+        draft.accept(.lens)                          // no effect once a value is typed
+        XCTAssertEqual(draft.value(.lens), "85 mm")
+        XCTAssertTrue(draft.isPending(.whiteBalance))
+
+        var everything = draft
+        everything.acceptAll()
+        XCTAssertEqual(everything.value(.lens), "85 mm", "Tout reprendre never replaces a typed value")
+        XCTAssertEqual(everything.value(.whiteBalance), "5600")
+        XCTAssertEqual(everything.value(.filters), "ND 0.6")
+
+        let sheet = try repo.saveSheet(draft, sheet: nil, in: report)
+        XCTAssertEqual(sheet.settings, ["lens": "85 mm", "iso": "800"])
+        XCTAssertEqual(sheet.roll?.name, "A010")
+        XCTAssertEqual(sheet.scene, "14")
+    }
+
+    func testRollIsCreatedAutomaticallyAndSheetCanMove() throws {
+        let (_, repo) = try setupStore()
+        let (_, report) = try report(repo)
+        XCTAssertTrue(report.rolls.isEmpty)
+        let first = try repo.saveSheet(sheetDraft("14", "A", roll: "a010"), sheet: nil, in: report)
+        XCTAssertEqual(report.rolls.count, 1)
+        XCTAssertEqual(first.roll?.name, "A010")
+        let second = try repo.saveSheet(sheetDraft("14", "B", roll: "A010"), sheet: nil, in: report)
+        XCTAssertEqual(report.rolls.count, 1, "An existing roll of this camera and day is reused")
+        XCTAssertEqual(second.roll?.id, first.roll?.id)
+        XCTAssertThrowsError(try repo.saveSheet(sheetDraft("14", "a", roll: "A010"), sheet: nil, in: report))
+
+        try repo.addNextTake(to: first); try repo.addNextTake(to: first)
+        let moving = try repo.addNextTake(to: second)
+        try repo.updateTake(moving, label: "PU", statuses: [], notes: "kept")
+        try repo.toggleCircle(moving)
+        let movingID = moving.id
+
+        var draft = repo.draft(for: second, in: report)
+        draft[.roll] = "A011"
+        let preview = repo.previewRollChange(for: second, to: "A011", in: report)
+        XCTAssertEqual(preview.map(\.to), ["A011 · C001"])
+        XCTAssertEqual(preview.map(\.from), ["A010 · C003"])
+        try repo.saveSheet(draft, sheet: second, in: report)
+
+        XCTAssertEqual(report.rolls.count, 2)
+        XCTAssertEqual(second.roll?.name, "A011")
+        XCTAssertEqual(moving.id, movingID)
+        XCTAssertEqual(moving.roll?.name, "A011")
+        XCTAssertEqual(moving.labelText, "PU"); XCTAssertTrue(moving.isCircle); XCTAssertEqual(moving.notes, "kept")
+        XCTAssertEqual(moving.roll?.clipNumbers[movingID], 1)
+        XCTAssertEqual(first.roll?.clipCount, 2)
+
+        // The same scene/shot may exist on two rolls (card change during the shot).
+        let continued = try repo.saveSheet(sheetDraft("14", "A", roll: "A011"), sheet: nil, in: report)
+        XCTAssertNotEqual(continued.id, first.id)
+        XCTAssertEqual(report.rolls.count, 2)
+    }
+
+    func testTakesIncrementWithinASheet() throws {
+        let (_, repo) = try setupStore()
+        let (_, report) = try report(repo)
+        let sheet = try repo.saveSheet(sheetDraft("14", "A", roll: "A010"), sheet: nil, in: report)
+        XCTAssertEqual(repo.nextTakeNumber(in: sheet), 1)
+        let numbers = try (1...3).map { _ in try repo.addNextTake(to: sheet).number }
+        XCTAssertEqual(numbers, [1, 2, 3])
+        XCTAssertEqual(sheet.orderedTakes.map { TakeLabel.code($0.number) }, ["T01", "T02", "T03"])
+        let other = try repo.saveSheet(sheetDraft("14", "B", roll: "A010"), sheet: nil, in: report)
+        XCTAssertEqual(try repo.addNextTake(to: other).number, 1)
+    }
+
+    func testClipSequenceAcrossSheetsAndRestartOnNewRoll() throws {
+        let (_, repo) = try setupStore()
+        let (_, report) = try report(repo)
+        let a = try repo.saveSheet(sheetDraft("14", "A", roll: "A010"), sheet: nil, in: report)
+        try repo.addNextTake(to: a); try repo.addNextTake(to: a)
+        let b = try repo.saveSheet(sheetDraft("14", "B", roll: "A010"), sheet: nil, in: report)
+        try repo.addNextTake(to: b)
+        let falseClip = try repo.addNextTake(to: b)
+        try repo.updateTake(falseClip, label: "FC", statuses: [], notes: "")
+        try repo.addNextTake(to: b)
+        let roll = try XCTUnwrap(a.roll)
+        XCTAssertEqual(codes(roll), ["A1=C001", "A2=C002", "B1=C003", "B2FC=C004", "B3=C005"])
+        XCTAssertEqual(roll.clipCount, 5)
+
+        let c = try repo.saveSheet(sheetDraft("14", "C", roll: "A011"), sheet: nil, in: report)
+        let take = try repo.addNextTake(to: c)
+        XCTAssertEqual(c.roll?.clipNumbers[take.id], 1)
+        XCTAssertEqual(roll.clipCount, 5, "A new card restarts its own sequence")
+    }
+
+    func testFalseClipKeepsItsPlaceAndIsIndependentFromCircle() throws {
+        let (_, repo) = try setupStore()
+        let (_, report) = try report(repo)
+        let sheet = try repo.saveSheet(sheetDraft("14", "B", roll: "A010"), sheet: nil, in: report)
+        try repo.addNextTake(to: sheet)
+        let fc = try repo.addNextTake(to: sheet)
+        try repo.updateTake(fc, label: " fc ", statuses: [TakeStatus.vfx.rawValue], notes: "")
+        XCTAssertEqual(fc.labelText, "fc")
+        try repo.updateTake(fc, label: "FC", statuses: [TakeStatus.vfx.rawValue], notes: "")
+        XCTAssertEqual(TakeLabel.title(number: fc.number, label: fc.labelText), "T02 · FC")
+        XCTAssertFalse(fc.isCircle)
+        try repo.toggleCircle(fc)
+        XCTAssertEqual(fc.labelText, "FC")
+        try repo.updateTake(fc, label: "PU", statuses: [], notes: "")
+        XCTAssertTrue(fc.isCircle, "Changing the label keeps Circle")
+        XCTAssertEqual(fc.number, 2)
+        XCTAssertEqual(fc.roll?.clipNumbers[fc.id], 2)
+        let next = try repo.addNextTake(to: sheet)
+        XCTAssertEqual(next.number, 3)
+        XCTAssertEqual(next.roll?.clipNumbers[next.id], 3)
+    }
+
+    func testLateInsertionShowsAndAppliesRenumbering() throws {
+        let (_, repo) = try setupStore()
+        let (_, report) = try report(repo)
+        let a = try repo.saveSheet(sheetDraft("14", "A", roll: "A010"), sheet: nil, in: report)
+        try repo.addNextTake(to: a); try repo.addNextTake(to: a)
+        let b = try repo.saveSheet(sheetDraft("14", "B", roll: "A010"), sheet: nil, in: report)
+        try repo.addNextTake(to: b); try repo.addNextTake(to: b)
+        let roll = try XCTUnwrap(a.roll)
+
+        let preview = repo.previewInsertion(on: roll, at: 3)
+        XCTAssertEqual(preview.map { "\($0.from)→\($0.to)" }, ["C003→C004", "C004→C005"])
+        XCTAssertTrue(repo.previewInsertion(on: roll, at: 5).isEmpty, "Appending renumbers nothing")
+        XCTAssertEqual(codes(roll), ["A1=C001", "A2=C002", "B1=C003", "B2=C004"], "Preview changes nothing")
+
+        XCTAssertThrowsError(try repo.insertTake(into: a, at: 3, number: 2), "Duplicate take number")
+        let forgotten = try repo.insertTake(into: a, at: 3, number: 3)
+        XCTAssertEqual(codes(roll), ["A1=C001", "A2=C002", "A3=C003", "B1=C004", "B2=C005"])
+        XCTAssertEqual(roll.clipNumbers[forgotten.id], 3)
+        for change in preview {
+            XCTAssertEqual(roll.clipNumbers[change.id].map(ClipCode.code), change.to)
+        }
+        let after = try repo.addNextTake(to: b)
+        XCTAssertEqual(roll.clipNumbers[after.id], 6)
+    }
+
+    func testTapEditsInNormalModeAndCirclesInCircleMode() throws {
+        let (_, repo) = try setupStore()
+        let (_, report) = try report(repo)
+        let sheet = try repo.saveSheet(sheetDraft("14", "A", roll: "A010"), sheet: nil, in: report)
+        let take = try repo.addNextTake(to: sheet)
+        try repo.updateTake(take, label: "PU", statuses: [TakeStatus.mos.rawValue], notes: "")
+
+        XCTAssertEqual(try repo.tap(take, mode: .edit), .edit(take.id))
+        XCTAssertFalse(take.isCircle, "Normal mode never circles")
+        XCTAssertEqual(try repo.tap(take, mode: .circle), .toggleCircle(take.id))
         XCTAssertTrue(take.isCircle)
-        try repo.toggleCircle(take)
+        XCTAssertEqual(try repo.tap(take, mode: .circle), .toggleCircle(take.id))
         XCTAssertFalse(take.isCircle)
-        XCTAssertEqual(Set(take.statusValues), Set(["VFX", "MOS"]))
-        XCTAssertEqual(take.revision, 3)
-        var defaults = report.camera!.defaults; defaults.iso = 320
-        report.camera!.defaults = defaults
-        XCTAssertEqual(take.settings.iso, 800)
+        XCTAssertEqual(try repo.tap(take, mode: .circle), .toggleCircle(take.id))
+        XCTAssertEqual(try repo.tap(take, mode: .edit), .edit(take.id))
+        XCTAssertTrue(take.isCircle, "Leaving circle mode restores editing without touching Circle")
+        XCTAssertEqual(take.labelText, "PU")
+        XCTAssertTrue(take.statusValues.contains(TakeStatus.mos.rawValue))
     }
 
-    func testEditingTakeKeepsIdentityAndRejectsDuplicateNumber() throws {
+    func testTakeSnapshotsAreNotRewrittenBySheetEdits() throws {
         let (_, repo) = try setupStore()
-        let (_, _, roll) = try hierarchy(repo)
-        let first = try repo.addTake(to: roll, draft: TakeDraft())
-        var secondDraft = TakeDraft(); secondDraft.number = 2
-        let second = try repo.addTake(to: roll, draft: secondDraft)
-        let id = first.id
-        var edited = first.draft
-        edited.settings.lensName = "75mm"
-        edited.notes = "Bonne prise"
-        edited.statuses = [.circle]
-        try repo.updateTake(first, draft: edited)
-        XCTAssertEqual(first.id, id)
-        XCTAssertEqual(first.settings.lensName, "75mm")
-        XCTAssertEqual(first.notes, "Bonne prise")
-        XCTAssertTrue(first.isCircle)
-        XCTAssertEqual(first.revision, 2)
-        edited.number = second.number
-        XCTAssertThrowsError(try repo.updateTake(first, draft: edited))
-        XCTAssertEqual(first.number, 1)
+        let (_, report) = try report(repo)
+        let sheet = try repo.saveSheet(sheetDraft("14", "A", roll: "A010", [.lens: "50 mm", .iso: "800"]),
+                                       sheet: nil, in: report)
+        let first = try repo.addNextTake(to: sheet)
+        var draft = repo.draft(for: sheet, in: report)
+        draft[.lens] = "85 mm"; draft[.iso] = ""
+        try repo.saveSheet(draft, sheet: sheet, in: report)
+        let second = try repo.addNextTake(to: sheet)
+        XCTAssertEqual(first.snapshot, ["lens": "50 mm", "iso": "800"])
+        XCTAssertEqual(second.snapshot, ["lens": "85 mm"])
+        XCTAssertEqual(sheet.settings, ["lens": "85 mm"])
     }
 
     func testValidationDoesNotInsertInvalidRecords() throws {
         let (container, repo) = try setupStore()
         XCTAssertThrowsError(try repo.addProduction(name: "  "))
-        let (production, report, roll) = try hierarchy(repo)
+        let (production, report) = try report(repo)
         XCTAssertThrowsError(try repo.addDay(to: production, number: 12, date: Date()))
         XCTAssertThrowsError(try repo.addCamera(to: production, name: " a "))
         XCTAssertThrowsError(try repo.addReport(to: report.day!, camera: report.camera!))
-        XCTAssertThrowsError(try repo.addRoll(to: report, name: "A004"))
-        var draft = TakeDraft(); draft.settings.fps = 0
-        XCTAssertThrowsError(try repo.addTake(to: roll, draft: draft))
-        draft.settings.fps = 24
-        try repo.addTake(to: roll, draft: draft)
-        XCTAssertThrowsError(try repo.addTake(to: roll, draft: draft))
-        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<TakeEntry>()), 1)
+        XCTAssertThrowsError(try repo.saveSheet(sheetDraft("14", "A", roll: " "), sheet: nil, in: report))
+        XCTAssertThrowsError(try repo.saveSheet(sheetDraft("14", "A", roll: "A010", [.iso: "huit cents"]),
+                                                sheet: nil, in: report))
+        XCTAssertThrowsError(try repo.saveSheet(sheetDraft("14", "A", roll: "A010", [.shutter: "400"]),
+                                                sheet: nil, in: report))
+        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<ShotSheet>()), 0)
+        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<Roll>()), 0)
+        let sheet = try repo.saveSheet(sheetDraft("14", "A", roll: "A010",
+            [.whiteBalance: "5600K", .fps: "23,976", .shutter: "172.8°"]), sheet: nil, in: report)
+        XCTAssertEqual(sheet.settings, ["whiteBalance": "5600", "fps": "23.976", "shutter": "172.8"])
     }
 
-    func testDeletionAndCascade() throws {
+    func testDeletionPreviewAndCascade() throws {
         let (container, repo) = try setupStore()
-        let (production, _, roll) = try hierarchy(repo)
-        let take = try repo.addTake(to: roll, draft: TakeDraft())
-        try repo.deleteTake(take)
-        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<TakeEntry>()), 0)
-        try repo.addTake(to: roll, draft: TakeDraft())
+        let (production, report) = try report(repo)
+        let sheet = try repo.saveSheet(sheetDraft("14", "A", roll: "A010"), sheet: nil, in: report)
+        let first = try repo.addNextTake(to: sheet)
+        try repo.addNextTake(to: sheet)
+        XCTAssertEqual(repo.previewDeletion(of: first).map(\.to), ["A010 · C001"])
+        try repo.deleteTake(first)
+        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<TakeEntry>()), 1)
         try repo.deleteProduction(production)
-        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<Production>()), 0)
-        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<ShootDay>()), 0)
-        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<Camera>()), 0)
-        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<CameraReport>()), 0)
-        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<Roll>()), 0)
-        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<TakeEntry>()), 0)
+        for count in [
+            try container.mainContext.fetchCount(FetchDescriptor<Production>()),
+            try container.mainContext.fetchCount(FetchDescriptor<ShootDay>()),
+            try container.mainContext.fetchCount(FetchDescriptor<Camera>()),
+            try container.mainContext.fetchCount(FetchDescriptor<CameraReport>()),
+            try container.mainContext.fetchCount(FetchDescriptor<Roll>()),
+            try container.mainContext.fetchCount(FetchDescriptor<ShotSheet>()),
+            try container.mainContext.fetchCount(FetchDescriptor<TakeEntry>())
+        ] { XCTAssertEqual(count, 0) }
     }
 
     func testDiskPersistenceAcrossContainers() throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let (directory, url) = try temporaryStoreURL()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let url = directory.appendingPathComponent("test.store")
         var savedID: UUID?
         do {
             let container = try CameraLogStore.makeContainer(url: url)
             let repo = CameraLogRepository(context: container.mainContext)
-            let (_, _, roll) = try hierarchy(repo)
-            var draft = TakeDraft(); draft.settings.filters = ["ND 0.6", "1/8 BPM"]
-            let take = try repo.addTake(to: roll, draft: draft)
+            let (_, report) = try report(repo)
+            let sheet = try repo.saveSheet(sheetDraft("14", "A", roll: "A010", [.filters: "ND 0.6 + 1/8 BPM"]),
+                                           sheet: nil, in: report)
+            let take = try repo.addNextTake(to: sheet)
+            try repo.updateTake(take, label: "FC", statuses: [], notes: "")
             try repo.toggleCircle(take); savedID = take.id
         }
         let reopened = try CameraLogStore.makeContainer(url: url)
         let takes = try reopened.mainContext.fetch(FetchDescriptor<TakeEntry>())
         XCTAssertEqual(takes.count, 1); XCTAssertEqual(takes.first?.id, savedID)
-        XCTAssertEqual(takes.first?.settings.filters, ["ND 0.6", "1/8 BPM"])
+        XCTAssertEqual(takes.first?.snapshot["filters"], "ND 0.6 + 1/8 BPM")
         XCTAssertEqual(takes.first?.isCircle, true)
+        XCTAssertEqual(takes.first?.labelText, "FC")
+        XCTAssertEqual(takes.first?.sheet?.roll?.name, "A010")
         XCTAssertEqual(takes.first?.roll?.report?.camera?.name, "A")
+    }
+
+    /// A store written by the previous version (schema 1, unversioned, as shipped) must open,
+    /// keep every take and identifier, and get sheets and clip order without touching old values.
+    func testOpeningAStoreCreatedByThePreviousVersion() throws {
+        let (directory, url) = try temporaryStoreURL()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var ids: [UUID] = []
+        do {
+            let schema = Schema([SchemaV1.Production.self, SchemaV1.ShootDay.self, SchemaV1.Camera.self,
+                                 SchemaV1.CameraReport.self, SchemaV1.Roll.self, SchemaV1.TakeEntry.self])
+            let configuration = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            let context = container.mainContext
+            let production = SchemaV1.Production(name: "Ancienne prod")
+            context.insert(production)
+            let day = SchemaV1.ShootDay(number: 3, date: Date(), production: production)
+            context.insert(day)
+            let camera = SchemaV1.Camera(name: "A", production: production)
+            context.insert(camera)
+            let report = SchemaV1.CameraReport(day: day, camera: camera)
+            context.insert(report)
+            let roll = SchemaV1.Roll(name: "A010", report: report)
+            roll.card = "CARD 7"
+            context.insert(roll)
+            var fifty = CaptureSettings(); fifty.lensName = "50mm"; fifty.filters = ["ND 0.6"]
+            var eightyFive = CaptureSettings(); eightyFive.lensName = "85mm"; eightyFive.iso = 1280
+            let base = Date(timeIntervalSince1970: 1_790_000_000)
+            let rows: [(String, String, Int, CaptureSettings, [String], String)] = [
+                ("14", "A", 1, fifty, [], "A010C001_260924"),
+                ("14", "A", 2, fifty, ["Circle", "VFX"], "A010C002_260924"),
+                ("14", "B", 1, eightyFive, [], "")
+            ]
+            for (index, row) in rows.enumerated() {
+                let take = SchemaV1.TakeEntry(scene: row.0, shot: row.1, number: row.2, settings: row.3,
+                                              statusValues: row.4, clipName: row.5, roll: roll)
+                take.createdAt = base.addingTimeInterval(Double(index) * 60)
+                context.insert(take)
+                ids.append(take.id)
+            }
+            try context.save()
+        }
+
+        let container = try CameraLogStore.makeContainer(url: url)
+        let repo = CameraLogRepository(context: container.mainContext)
+        let migrated = try repo.migrateLegacyTakes()
+        XCTAssertEqual(migrated, 3)
+        XCTAssertEqual(try repo.migrateLegacyTakes(), 0, "Migration is idempotent")
+
+        let takes = try container.mainContext.fetch(FetchDescriptor<TakeEntry>())
+        XCTAssertEqual(Set(takes.map(\.id)), Set(ids))
+        let byID = Dictionary(uniqueKeysWithValues: takes.map { ($0.id, $0) })
+        let first = try XCTUnwrap(byID[ids[0]]), second = try XCTUnwrap(byID[ids[1]]), third = try XCTUnwrap(byID[ids[2]])
+        XCTAssertEqual(first.clipName, "A010C001_260924", "Typed clip names are preserved, not converted")
+        XCTAssertEqual(third.clipName, "")
+        XCTAssertEqual(first.settings.lensName, "50mm")
+        XCTAssertEqual(third.settings.iso, 1280)
+        XCTAssertEqual(Set(second.statusValues), ["Circle", "VFX"])
+        XCTAssertEqual(first.labelText, "")
+        XCTAssertEqual(first.snapshot["lens"], "50mm")
+        XCTAssertEqual(first.snapshot["filters"], "ND 0.6")
+        XCTAssertEqual(third.snapshot["iso"], "1280")
+
+        let roll = try XCTUnwrap(first.roll)
+        XCTAssertEqual(roll.card, "CARD 7")
+        XCTAssertEqual(roll.currentSheets.count, 2)
+        XCTAssertEqual(first.sheet?.id, second.sheet?.id)
+        XCTAssertNotEqual(first.sheet?.id, third.sheet?.id)
+        XCTAssertEqual(third.sheet?.settings["lens"], "85mm")
+        XCTAssertEqual(roll.clipSequence.map(\.id), ids, "Clip order follows the original creation order")
+
+        // New work continues the card sequence.
+        let report = try XCTUnwrap(roll.report)
+        let sheet = try XCTUnwrap(third.sheet)
+        let added = try repo.addNextTake(to: sheet)
+        XCTAssertEqual(added.number, 2)
+        XCTAssertEqual(roll.clipNumbers[added.id], 4)
+        XCTAssertEqual(repo.newSheetDraft(for: report).suggestion(.lens), "85mm")
     }
 
     func testSampleData() throws {
@@ -158,6 +400,8 @@ import SwiftData
         XCTAssertEqual(takes.count, 4)
         XCTAssertEqual(takes.filter(\.isCircle).count, 1)
         XCTAssertEqual(Set(takes.map(\.scene)), ["24"])
-        XCTAssertEqual(Set(takes.map { $0.settings.lensName }), ["35mm", "50mm", "75mm"])
+        XCTAssertEqual(Set(takes.compactMap { $0.snapshot["lens"] }), ["35mm", "50mm", "75mm"])
+        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<Roll>()), 1)
+        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<ShotSheet>()), 2)
     }
 }

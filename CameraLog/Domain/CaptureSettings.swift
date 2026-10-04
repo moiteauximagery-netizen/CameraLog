@@ -1,6 +1,7 @@
 import Foundation
 
-/// Value snapshots keep historic takes independent from subsequent camera edits.
+/// Schema 1 settings snapshot. Frozen: SchemaV1 stores this exact type, so changing it would
+/// prevent stores created by version 1 from being recognised. New takes use `ShotSheet.settings`.
 struct CaptureSettings: Codable, Equatable {
     var lensName = ""
     var focalLengthMM: Double?
@@ -34,42 +35,15 @@ enum TakeStatus: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-struct TakeDraft {
-    var scene = "1"
-    var shot = "01"
-    var number = 1
-    var settings = CaptureSettings()
-    var statuses: [TakeStatus] = []
-    var clipName = ""
-    var fileName = ""
-    var tcIn = ""
-    var tcOut = ""
-    var notes = ""
-    var technicalNotes = ""
-    var cameraNotes = ""
-}
-
-enum SmartFill {
-    /// Caller scopes history to one report. Personal take data never carries over.
-    static func next(after previous: TakeDraft?, defaults: CaptureSettings) -> TakeDraft {
-        var draft = TakeDraft()
-        draft.settings = previous?.settings ?? defaults
-        if let previous {
-            draft.scene = previous.scene
-            draft.shot = previous.shot
-            draft.number = previous.number + 1
-        }
-        return draft
-    }
-}
-
 enum LogError: LocalizedError {
     case invalid(String)
     case duplicateTake
+    case duplicateSheet(String, String)
     var errorDescription: String? {
         switch self {
         case .invalid(let message): return message
-        case .duplicateTake: return "Cette scène / plan / prise existe déjà sur ce roll."
+        case .duplicateTake: return "Ce numéro de prise existe déjà dans cette fiche."
+        case .duplicateSheet(let sheet, let roll): return "La fiche \(sheet) existe déjà sur le roll \(roll)."
         }
     }
 }

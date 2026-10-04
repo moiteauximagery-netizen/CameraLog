@@ -76,10 +76,50 @@ import SwiftData
     var createdAt: Date
     var report: CameraReport?
     @Relationship(deleteRule: .cascade, inverse: \TakeEntry.roll) var takes: [TakeEntry] = []
+    // Schema 2: rolls are created automatically from the ROLL field of a sheet.
+    @Relationship(deleteRule: .cascade, inverse: \ShotSheet.roll) var sheets: [ShotSheet] = []
     init(name: String, report: CameraReport) {
         id = UUID(); self.name = name; self.report = report; createdAt = Date()
     }
-    var orderedTakes: [TakeEntry] { takes.sorted { $0.createdAt < $1.createdAt } }
+    /// Every clip recorded on this card, all sheets included, in card order.
+    var clipSequence: [TakeEntry] {
+        takes.filter { $0.roll?.id == id }.sorted(by: TakeEntry.precedesOnCard)
+    }
+    var clipNumbers: [UUID: Int] {
+        var result: [UUID: Int] = [:]
+        for (index, take) in clipSequence.enumerated() { result[take.id] = index + 1 }
+        return result
+    }
+    var clipCount: Int { clipSequence.count }
+    var currentSheets: [ShotSheet] { sheets.filter { $0.roll?.id == id } }
+}
+
+/// One shot on one roll: identification, current settings and its takes.
+@Model final class ShotSheet {
+    @Attribute(.unique) var id: UUID
+    var scene: String
+    var shot: String
+    var settingsData: Data?
+    var notes: String
+    var createdAt: Date
+    var updatedAt: Date
+    var revision: Int
+    var roll: Roll?
+    @Relationship(deleteRule: .cascade, inverse: \TakeEntry.sheet) var takes: [TakeEntry] = []
+    init(scene: String, shot: String, roll: Roll) {
+        id = UUID(); self.scene = scene; self.shot = shot; notes = ""; revision = 1
+        createdAt = Date(); updatedAt = Date(); self.roll = roll
+    }
+    /// Values typed or accepted by the user. A missing key means « not known ».
+    var settings: [String: String] {
+        get { SettingsCoding.decode(settingsData) ?? [:] }
+        set { settingsData = SettingsCoding.encode(newValue) }
+    }
+    var orderedTakes: [TakeEntry] {
+        takes.filter { $0.sheet?.id == id }.sorted(by: TakeEntry.precedesOnCard)
+    }
+    var lastActivity: Date { max(updatedAt, takes.map(\.createdAt).max() ?? updatedAt) }
+    var title: String { "\(scene) / \(shot)" }
 }
 
 @Model final class TakeEntry {
@@ -87,8 +127,10 @@ import SwiftData
     var scene: String
     var shot: String
     var number: Int
+    /// Schema 1 settings. Kept untouched for takes recorded before sheets; unused for new takes.
     var settings: CaptureSettings
     var statusValues: [String]
+    /// Schema 1 free clip name. Never edited nor converted; shown as legacy information.
     var clipName: String
     var fileName: String
     var tcIn: String
@@ -100,21 +142,28 @@ import SwiftData
     var updatedAt: Date
     var revision = 1
     var roll: Roll?
-    init(draft: TakeDraft, roll: Roll) {
-        id = UUID(); scene = draft.scene; shot = draft.shot; number = draft.number
-        settings = draft.settings; statusValues = draft.statuses.map(\.rawValue)
-        clipName = draft.clipName; fileName = draft.fileName
-        tcIn = draft.tcIn; tcOut = draft.tcOut; notes = draft.notes
-        technicalNotes = draft.technicalNotes; cameraNotes = draft.cameraNotes
-        createdAt = Date(); updatedAt = Date(); self.roll = roll
+    // Schema 2 additions are optional so version 1 stores migrate without inventing values.
+    var label: String?
+    var cardOrder: Int?
+    var snapshotData: Data?
+    var sheet: ShotSheet?
+    init(number: Int, sheet: ShotSheet, roll: Roll, cardOrder: Int) {
+        id = UUID(); scene = sheet.scene; shot = sheet.shot; self.number = number
+        settings = CaptureSettings(); statusValues = []
+        clipName = ""; fileName = ""; tcIn = ""; tcOut = ""
+        notes = ""; technicalNotes = ""; cameraNotes = ""
+        createdAt = Date(); updatedAt = Date()
+        label = ""; self.cardOrder = cardOrder
+        snapshotData = SettingsCoding.encode(sheet.settings)
+        self.roll = roll; self.sheet = sheet
     }
     var isCircle: Bool { statusValues.contains(TakeStatus.circle.rawValue) }
-    var draft: TakeDraft {
-        var value = TakeDraft()
-        value.scene = scene; value.shot = shot; value.number = number; value.settings = settings
-        value.statuses = statusValues.compactMap(TakeStatus.init(rawValue:))
-        value.clipName = clipName; value.fileName = fileName; value.tcIn = tcIn; value.tcOut = tcOut
-        value.notes = notes; value.technicalNotes = technicalNotes; value.cameraNotes = cameraNotes
-        return value
+    var labelText: String { label ?? "" }
+    /// Settings when the take was created. Later sheet edits never change it.
+    var snapshot: [String: String] { SettingsCoding.decode(snapshotData) ?? settings.sheetValues }
+    var displayTitle: String { "\(scene) / \(shot) · \(TakeLabel.title(number: number, label: labelText))" }
+
+    static func precedesOnCard(_ a: TakeEntry, _ b: TakeEntry) -> Bool {
+        (a.cardOrder ?? Int.max, a.createdAt, a.id.uuidString) < (b.cardOrder ?? Int.max, b.createdAt, b.id.uuidString)
     }
 }

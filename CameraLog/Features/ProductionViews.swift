@@ -13,7 +13,8 @@ struct ProductionListView: View {
         }
     }
     private func activityDate(for report: CameraReport) -> Date {
-        report.rolls.flatMap(\.takes).map(\.updatedAt).max() ?? report.createdAt
+        (report.rolls.flatMap(\.takes).map(\.updatedAt) + report.rolls.flatMap(\.sheets).map(\.updatedAt)).max()
+            ?? report.createdAt
     }
     var body: some View {
         NavigationStack {
@@ -31,6 +32,7 @@ struct ProductionListView: View {
                             }
                             .padding(.vertical, 8)
                         }
+                        .accessibilityIdentifier("resume-report")
                     }
                 }
                 Section {
