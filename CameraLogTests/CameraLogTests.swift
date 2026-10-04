@@ -596,10 +596,14 @@ import SwiftData
         text = FilterSelection.apply(family: "POLA", grade: "", to: text)
         XCTAssertEqual(text, "BPM 1/4 + IRND 0.3 + POLA")
         XCTAssertTrue(FilterSelection.isSelected(family: "POLA", grade: "", in: text))
-        XCTAssertEqual(Aperture.rows.count, 10)
-        XCTAssertEqual(Aperture.rows.first, ["1", "1 ⅓", "1 ⅔"])
-        XCTAssertEqual(Aperture.rows[3], ["2.8", "2.8 ⅓", "2.8 ⅔"])
-        XCTAssertEqual(Aperture.rows.last, ["22"])
+        XCTAssertEqual(Aperture.fullStops.count, 10)
+        XCTAssertEqual(Aperture.fractions.map(Aperture.label), ["Plein", "+⅓", "+½", "+⅔"])
+        XCTAssertEqual(Aperture.value(stop: "2.8", fraction: ""), "2.8")
+        XCTAssertEqual(Aperture.value(stop: "2.8", fraction: "½"), "2.8 ½")
+        XCTAssertEqual(Aperture.fraction(forLabel: "+⅔"), "⅔")
+        XCTAssertEqual(Aperture.parse("5.6 ⅓")?.stop, "5.6"); XCTAssertEqual(Aperture.parse("5.6 ⅓")?.fraction, "⅓")
+        XCTAssertNil(Aperture.parse("T2.8 + 1/4"), "A free value is not one of the picker values")
+        XCTAssertEqual(ReportExport.stop("2.8 ½"), "T2.8 1/2")
     }
 
     func testInlineTakeLabel() throws {

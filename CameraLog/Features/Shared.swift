@@ -48,3 +48,22 @@ struct CameraBadge: View {
             .accessibilityLabel("Caméra \(name)")
     }
 }
+
+extension Color {
+    /// Accent of the entry screens: the camera color, light gray for a gray camera.
+    static func cameraAccent(_ hue: Double?) -> Color {
+        hue == nil ? Color(white: 0.78) : .camera(hue)
+    }
+}
+
+private struct SheetAccentKey: EnvironmentKey {
+    static let defaultValue = Color.orange
+}
+
+extension EnvironmentValues {
+    /// Color of the sheet being edited; orange elsewhere in the app.
+    var sheetAccent: Color {
+        get { self[SheetAccentKey.self] }
+        set { self[SheetAccentKey.self] = newValue }
+    }
+}

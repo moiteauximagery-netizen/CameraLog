@@ -23,6 +23,7 @@ struct SheetView: View {
     @State private var error: String?
     @State private var feedback = 0
     @State private var picker: SheetField?
+    @State private var apertureFraction = ""
     @State private var labelTakeID: UUID?
     @State private var labelDraft = ""
     @State private var saveTask: Task<Void, Never>?
@@ -42,6 +43,8 @@ struct SheetView: View {
     private var filterKit: [FilterFamily] { report.day?.production?.filterKit ?? FilterFamily.defaultKit }
     private var catalog: ProjectCatalog { report.day?.production?.catalog ?? ProjectCatalog() }
     private var vfxShown: Bool { !catalog.isHidden(ProjectCatalog.vfxBlock) }
+    /// Entry screens take the camera color; the rest of the app stays orange.
+    private var accent: Color { Color.cameraAccent(report.camera?.colorHue) }
     private var nextNumber: Int { sheet.map { repository.nextTakeNumber(in: $0) } ?? 1 }
     private var rollPrefix: String? { RollNaming.prefix(forCamera: report.camera?.name) }
     private var isComplete: Bool { SheetField.identification.allSatisfy { !draft.value($0).isEmpty } }
@@ -65,9 +68,9 @@ struct SheetView: View {
                 row([.fps, .shutter])
                 row([.lut, .aspectRatio])
                 row([.format, .resolution])
-                if vfxShown { vfxSection }
                 takesSection
                 notesCell
+                if vfxShown { vfxSection }
             }
             .padding()
         }
@@ -123,10 +126,13 @@ struct SheetView: View {
         .sheet(item: $editingTake, onDismiss: deletePendingTake) { take in
             TakeDetailView(take: take, repository: repository,
                            onSave: { feedback += 1 }, onDelete: { takeToDelete = take })
+                .environment(\.sheetAccent, accent)
+                .tint(accent)
         }
         .sheet(isPresented: $inserting) {
             if let sheet {
                 InsertTakeView(sheet: sheet, repository: repository) { feedback += 1 }
+                    .tint(accent)
             }
         }
         .confirmationDialog("Changer de roll ?", isPresented: Binding(
@@ -155,6 +161,8 @@ struct SheetView: View {
             Text(deletionMessage(take))
         }
         .sensoryFeedback(.success, trigger: feedback)
+        .environment(\.sheetAccent, accent)
+        .tint(accent)
         .logError($error)
     }
 
@@ -167,7 +175,7 @@ struct SheetView: View {
             Spacer()
             Label(stateText, systemImage: saveIssue != nil ? "exclamationmark.circle.fill"
                   : (isDirty ? "pencil.circle.fill" : "checkmark.circle"))
-                .foregroundStyle(saveIssue != nil || isDirty ? Color.orange : Color.secondary)
+                .foregroundStyle(saveIssue != nil || isDirty ? accent : Color.secondary)
                 .lineLimit(2)
                 .accessibilityIdentifier("sheet-state")
         }
@@ -201,7 +209,7 @@ struct SheetView: View {
                 Label("VFX", systemImage: "cube.transparent")
                     .font(.headline)
             }
-            .tint(.orange)
+            .tint(accent)
             .frame(minHeight: 44)
             .accessibilityHint("Affiche hauteur caméra, point et tilt. Les nouvelles prises sont marquées VFX.")
             .accessibilityIdentifier("vfx-toggle")
@@ -212,7 +220,7 @@ struct SheetView: View {
             }
         }
         .padding(.horizontal, 12).padding(.vertical, 6)
-        .background(draft.vfx ? Color.orange.opacity(0.12) : Color.gray.opacity(0.08),
+        .background(draft.vfx ? accent.opacity(0.12) : Color.gray.opacity(0.08),
                     in: RoundedRectangle(cornerRadius: 12))
     }
 
@@ -222,7 +230,7 @@ struct SheetView: View {
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
                 Text(field.title)
-                    .font(.caption2.bold()).foregroundStyle(.orange)
+                    .font(.caption2.bold()).foregroundStyle(accent)
                     .lineLimit(1).minimumScaleFactor(0.7)
                 Spacer(minLength: 0)
                 if hasPicker(field) { pickerButton(field) }
@@ -250,7 +258,7 @@ struct SheetView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.orange)
+                .foregroundStyle(accent)
                 .accessibilityLabel("Reprendre \(suggestion) pour \(field.spokenName)")
                 .accessibilityIdentifier("accept-\(field.rawValue)")
             }
@@ -275,7 +283,7 @@ struct SheetView: View {
             }
             Spacer(minLength: 4)
             Button("Tout reprendre") { draft.acceptAll() }
-                .buttonStyle(.bordered).tint(.orange)
+                .buttonStyle(.bordered).tint(accent)
                 .frame(minHeight: 44)
                 .accessibilityIdentifier("accept-all")
         }
@@ -285,7 +293,7 @@ struct SheetView: View {
 
     private var notesCell: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text("COMMENTAIRE").font(.caption2.bold()).foregroundStyle(.orange)
+            Text("COMMENTAIRE").font(.caption2.bold()).foregroundStyle(accent)
             TextField("Note de plateau", text: $draft.notes, axis: .vertical)
                 .lineLimit(2...5)
         }
@@ -300,7 +308,7 @@ struct SheetView: View {
         let takes = sheet?.orderedTakes ?? []
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Text("TAKES").font(.headline).foregroundStyle(.orange)
+                Text("TAKES").font(.headline).foregroundStyle(accent)
                 Spacer()
                 circleButton
                 addButton
@@ -312,7 +320,7 @@ struct SheetView: View {
                     .foregroundStyle(Color.black)
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.orange, in: RoundedRectangle(cornerRadius: 10))
+                    .background(accent, in: RoundedRectangle(cornerRadius: 10))
             }
             if takes.isEmpty {
                 Text(sheet == nil
@@ -331,11 +339,11 @@ struct SheetView: View {
             }
         }
         .padding(12)
-        .background(circleMode ? Color.orange.opacity(0.15) : Color.gray.opacity(0.08),
+        .background(circleMode ? accent.opacity(0.15) : Color.gray.opacity(0.08),
                     in: RoundedRectangle(cornerRadius: 14))
         .overlay {
             RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(circleMode ? Color.orange : Color.gray.opacity(0.3), lineWidth: circleMode ? 3 : 1)
+                .strokeBorder(circleMode ? accent : Color.gray.opacity(0.3), lineWidth: circleMode ? 3 : 1)
         }
     }
 
@@ -398,7 +406,7 @@ struct SheetView: View {
                            : "Touchez pour que chaque prise touchée soit cerclée ou décerclée.")
         .accessibilityIdentifier("circle-mode")
         if circleMode {
-            button.buttonStyle(.borderedProminent).tint(.orange)
+            button.buttonStyle(.borderedProminent).tint(accent)
         } else {
             button.buttonStyle(.bordered).tint(.gray)
         }
@@ -585,8 +593,8 @@ struct SheetView: View {
             Text(clip.map(ClipCode.code) ?? "—").font(.caption2.monospaced())
         }
         .frame(maxWidth: .infinity, minHeight: 64)
-        .background(Color.orange.opacity(0.25), in: RoundedRectangle(cornerRadius: 10))
-        .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(Color.orange, lineWidth: 2) }
+        .background(accent.opacity(0.25), in: RoundedRectangle(cornerRadius: 10))
+        .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(accent, lineWidth: 2) }
     }
 
     // MARK: Quick pickers on the lens, T-stop and filter boxes
@@ -602,18 +610,24 @@ struct SheetView: View {
     }
 
     private func pickerButton(_ field: SheetField) -> some View {
-        Button { focus = nil; picker = field } label: {
+        Button {
+            focus = nil
+            if field == .tStop { apertureFraction = Aperture.parse(draft.value(.tStop))?.fraction ?? "" }
+            picker = field
+        } label: {
             Image(systemName: "chevron.down.circle.fill")
                 .font(.title3)
                 .frame(minWidth: 36, minHeight: 28)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(.orange)
+        .foregroundStyle(accent)
         .accessibilityLabel("Choisir \(field.spokenName) dans la liste")
         .accessibilityIdentifier("picker-\(field.rawValue)")
         .popover(isPresented: Binding(get: { picker == field }, set: { if !$0 { picker = nil } })) {
             pickerContent(field)
+                .environment(\.sheetAccent, accent)
+                .tint(accent)
                 .padding(12)
                 .frame(width: 330)
                 .presentationCompactAdaptation(.popover)
@@ -628,7 +642,7 @@ struct SheetView: View {
                     ForEach(lensSeries) { series in
                         VStack(alignment: .leading, spacing: 4) {
                             if !series.name.isEmpty {
-                                Text(series.name).font(.caption.bold()).foregroundStyle(.orange)
+                                Text(series.name).font(.caption.bold()).foregroundStyle(accent)
                             }
                             ValueGrid(values: series.focals, columns: 4, idPrefix: series.name.isEmpty ? "lens" : series.name,
                                       selected: { draft.value(.lens) == LensSeries.value(series: series.name, focal: $0) }) { focal in
@@ -641,17 +655,21 @@ struct SheetView: View {
             }
             .frame(maxHeight: 400)
         case .tStop:
-            ScrollView {
-                VStack(spacing: 6) {
-                    ForEach(Aperture.rows, id: \.self) { row in
-                        ValueGrid(values: row, columns: 3, selected: { $0 == draft.value(.tStop) }) { value in
-                            draft[.tStop] = value
-                            picker = nil
-                        }
-                    }
+            let current = Aperture.parse(draft.value(.tStop))
+            VStack(alignment: .leading, spacing: 10) {
+                Text("1. Fraction").font(.caption.bold()).foregroundStyle(accent)
+                ValueGrid(values: Aperture.fractions.map(Aperture.label), columns: 4, idPrefix: "fraction",
+                          selected: { $0 == Aperture.label(apertureFraction) }) { label in
+                    apertureFraction = Aperture.fraction(forLabel: label)
+                }
+                Text("2. Diaph").font(.caption.bold()).foregroundStyle(accent)
+                ValueGrid(values: Aperture.fullStops, columns: 5, idPrefix: "stop",
+                          selected: { $0 == current?.stop }) { stop in
+                    draft[.tStop] = Aperture.value(stop: stop, fraction: apertureFraction)
+                    apertureFraction = ""
+                    picker = nil
                 }
             }
-            .frame(maxHeight: 420)
         case .filters:
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
@@ -669,7 +687,7 @@ struct SheetView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         ForEach(filterKit) { family in
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(family.name).font(.caption.bold()).foregroundStyle(.orange)
+                                Text(family.name).font(.caption.bold()).foregroundStyle(accent)
                                 ValueGrid(values: family.grades.isEmpty ? [family.name] : family.grades, columns: 4,
                                           idPrefix: family.name,
                                           selected: { FilterSelection.isSelected(family: family.name,
@@ -712,6 +730,7 @@ struct SheetView: View {
 }
 
 private struct TakeChip: View {
+    @Environment(\.sheetAccent) private var accent
     let take: TakeEntry
     let clip: Int?
     let circleMode: Bool
@@ -734,7 +753,7 @@ private struct TakeChip: View {
             }
             .frame(maxWidth: .infinity, minHeight: 64)
             .foregroundStyle(take.isCircle ? Color.black : Color.primary)
-            .background(take.isCircle ? Color.orange : Color.gray.opacity(0.2),
+            .background(take.isCircle ? accent : Color.gray.opacity(0.2),
                         in: RoundedRectangle(cornerRadius: 10))
             .overlay(alignment: .topTrailing) {
                 if take.isCircle {
@@ -743,7 +762,7 @@ private struct TakeChip: View {
             }
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(circleMode ? Color.orange : Color.clear,
+                    .strokeBorder(circleMode ? accent : Color.clear,
                                   style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
             }
             .contentShape(Rectangle())
@@ -777,6 +796,7 @@ private extension SheetField {
 
 /// Buttons laid out in rows, one tap per value. Used by the lens, T-stop and filter pickers.
 private struct ValueGrid: View {
+    @Environment(\.sheetAccent) private var accent
     let values: [String]
     let columns: Int
     var idPrefix = "value"
@@ -798,7 +818,7 @@ private struct ValueGrid: View {
                                 .lineLimit(1).minimumScaleFactor(0.6)
                                 .frame(maxWidth: .infinity, minHeight: 44)
                                 .foregroundStyle(isOn ? Color.black : Color.primary)
-                                .background(isOn ? Color.orange : Color.gray.opacity(0.2),
+                                .background(isOn ? accent : Color.gray.opacity(0.2),
                                             in: RoundedRectangle(cornerRadius: 8))
                         }
                         .buttonStyle(.plain)

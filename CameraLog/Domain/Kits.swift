@@ -131,11 +131,23 @@ enum FilterSelection {
     }
 }
 
-/// T-stops offered on the DIAPH field: full stops and their thirds.
+/// T-stops offered on the DIAPH field in two steps: a fraction (full, ⅓, ½, ⅔), then a full stop.
 enum Aperture {
     static let fullStops = ["1", "1.4", "2", "2.8", "4", "5.6", "8", "11", "16", "22"]
-    static var rows: [[String]] {
-        fullStops.map { stop in stop == fullStops.last ? [stop] : [stop, "\(stop) ⅓", "\(stop) ⅔"] }
+    static let fractions = ["", "⅓", "½", "⅔"]
+    static func label(_ fraction: String) -> String { fraction.isEmpty ? "Plein" : "+" + fraction }
+    static func fraction(forLabel label: String) -> String {
+        fractions.first { self.label($0) == label } ?? ""
+    }
+    /// « 2.8 » + « ⅓ » → « 2.8 ⅓ ».
+    static func value(stop: String, fraction: String) -> String { fraction.isEmpty ? stop : "\(stop) \(fraction)" }
+    /// Full stop and fraction of a DIAPH value written by the picker; nil for a free value.
+    static func parse(_ value: String) -> (stop: String, fraction: String)? {
+        let parts = value.split(separator: " ").map(String.init)
+        guard let stop = parts.first, fullStops.contains(stop) else { return nil }
+        let fraction = parts.count > 1 ? parts[1] : ""
+        guard parts.count <= 2, fractions.contains(fraction) else { return nil }
+        return (stop, fraction)
     }
 }
 

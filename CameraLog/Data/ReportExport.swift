@@ -48,6 +48,7 @@ enum ReportExport {
     static func stop(_ value: String) -> String {
         var text = value.trimmingCharacters(in: .whitespaces)
             .replacingOccurrences(of: "⅓", with: "1/3").replacingOccurrences(of: "⅔", with: "2/3")
+            .replacingOccurrences(of: "½", with: "1/2")
         guard !text.isEmpty else { return "" }
         if text.first == "t" || text.first == "T" { text.removeFirst() }
         return "T" + text.trimmingCharacters(in: .whitespaces)

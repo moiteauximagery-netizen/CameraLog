@@ -44,6 +44,14 @@ enum ReportPDF {
         return parts.joined(separator: " · ")
     }
 
+    /// Camera color for fills, and a darker shade readable on paper for text and lines.
+    private static func cameraFill(_ hue: Double?) -> UIColor {
+        hue.map { UIColor(hue: $0, saturation: 0.35, brightness: 1, alpha: 1) } ?? UIColor(white: 0.9, alpha: 1)
+    }
+    private static func cameraInk(_ hue: Double?) -> UIColor {
+        hue.map { UIColor(hue: $0, saturation: 0.9, brightness: 0.55, alpha: 1) } ?? .black
+    }
+
     private static func font(_ size: CGFloat, _ weight: UIFont.Weight = .regular) -> UIFont {
         .monospacedDigitSystemFont(ofSize: size, weight: weight)
     }
@@ -132,21 +140,24 @@ enum ReportPDF {
                     UIColor(hue: hue, saturation: 0.72, brightness: 0.95, alpha: 1).setFill()
                     UIBezierPath(roundedRect: CGRect(x: margin, y: y + 1, width: 12, height: 14), cornerRadius: 3).fill()
                 }
+                let ink = cameraInk(camera?.colorHue)
+                let fill = cameraFill(camera?.colorHue)
                 draw("CAM \(camera?.name ?? "—")" + (body.isEmpty ? "" : "  ·  \(body)"),
                      at: CGRect(x: margin + (camera?.colorHue == nil ? 0 : 18), y: y, width: width, height: 16),
-                     size: 13, weight: .bold)
+                     size: 13, weight: .bold, color: ink)
                 y += 20
 
                 for roll in rolls {
                     let sequence = roll.clipSequence
                     ensure(rowHeight * 3 + 20, repeatHeader: false)
-                    UIColor(white: 0.9, alpha: 1).setFill()
+                    fill.setFill()
                     UIRectFill(CGRect(x: margin, y: y, width: width, height: 18))
                     let details = ["\(sequence.count) clip(s) · C001 → \(ClipCode.code(sequence.count))",
                                    roll.card.isEmpty ? "" : "Mag # \(roll.card)",
                                    roll.reel.isEmpty ? "" : "Reel \(roll.reel)"].filter { !$0.isEmpty }
                     draw("ROLL \(roll.name)   ·   " + details.joined(separator: "   ·   "),
-                         at: CGRect(x: margin + 6, y: y + 3, width: width - 12, height: 13), size: 10, weight: .semibold)
+                         at: CGRect(x: margin + 6, y: y + 3, width: width - 12, height: 13), size: 10, weight: .semibold,
+                         color: ink)
                     y += 20
                     tableHeader()
                     for (index, take) in sequence.enumerated() {
@@ -163,9 +174,9 @@ enum ReportPDF {
                             if columnIndex == 2 && take.isCircle {
                                 let textWidth = (text as NSString).size(withAttributes: [.font: font(10, .semibold)]).width
                                 let circle = CGRect(x: x - 1, y: y + 0.5, width: max(textWidth + 8, 16), height: 16)
-                                UIColor.black.setStroke()
+                                ink.setStroke()
                                 let path = UIBezierPath(ovalIn: circle)
-                                path.lineWidth = 1
+                                path.lineWidth = 1.2
                                 path.stroke()
                             }
                             x += w

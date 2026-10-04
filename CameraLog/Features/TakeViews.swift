@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Normal-mode tap on a take: label, statuses and notes. The clip number is shown, never edited.
 struct TakeDetailView: View {
+    @Environment(\.sheetAccent) private var accent
     let take: TakeEntry
     let repository: CameraLogRepository
     let onSave: () -> Void
@@ -46,7 +47,7 @@ struct TakeDetailView: View {
                         ForEach(TakeLabel.quick, id: \.self) { value in
                             Button(value) { label = value }
                                 .buttonStyle(.bordered)
-                                .tint(label == value ? Color.orange : Color.gray)
+                                .tint(label == value ? accent : Color.gray)
                                 .accessibilityIdentifier("label-\(value)")
                         }
                         Button("Aucun") { label = "" }
@@ -167,7 +168,7 @@ struct InsertTakeView: View {
                         Button { position = slot } label: {
                             HStack(spacing: 10) {
                                 Image(systemName: position == slot ? "largecircle.fill.circle" : "circle")
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(.tint)
                                 Text(slot <= sequence.count
                                      ? "Avant \(ClipCode.code(slot)) · \(sequence[slot - 1].displayTitle)"
                                      : "Après le dernier clip · \(ClipCode.code(slot))")
