@@ -109,7 +109,7 @@ jobs:
         run: |
           if [ -d build/CameraLogTests.xcresult ]; then
             xcrun xcresulttool export attachments --path build/CameraLogTests.xcresult --output-path build/screenshots || true
-            ls build/screenshots || true
+            echo "::notice title=Captures exportées::$(find build/screenshots -type f 2>/dev/null | wc -l | tr -d ' ') fichier(s)"
           fi
 
       - name: Résumé lisible des tests

@@ -27,6 +27,10 @@ Prérequis : iOS 17 ou supérieur, câble USB et compte Apple gratuit.
 6. Si iOS le demande, activer **Réglages → Confidentialité et sécurité → Mode développeur**, redémarrer et confirmer. Valider également le profil développeur dans **Réglages → Général → VPN et gestion de l'appareil** si demandé.
 7. Ouvrir CameraLog et commencer avec « LES OMBRES — exemple ».
 
+### Mettre à jour une app déjà installée
+
+Installer le nouvel IPA **par-dessus** l'ancien, avec le même compte Apple dans Sideloadly, sans supprimer l'app de l'iPhone : les rapports existants sont conservés et convertis en fiches à la première ouverture (voir « Données existantes et mise à jour » dans le README). Après cette conversion, l'ancienne version de l'app ne peut plus ouvrir la base : ne pas réinstaller un IPA plus ancien. Faute d'export dans l'app, la conversion n'a été testée que sur simulateur, avec une base écrite par l'ancienne version ; vérifier quelques prises connues après la mise à jour.
+
 Avec un compte gratuit, la signature expire après **sept jours**. Le renouvellement proposé par Sideloadly nécessite que ses conditions de connexion et d'exécution soient réunies. Il faut renouveler la signature, pas acheter un abonnement. Conserver le même compte Apple et le même identifiant de bundle lors des mises à jour ; ne pas désinstaller l'app pour renouveler la signature, car cela effacerait ses données locales. Les exports/sauvegardes applicatives ne sont pas encore implémentés : utiliser des données de test.
 
 Références : [FAQ Sideloadly](https://sideloadly.io/faq.html), [compte développeur gratuit Apple et expiration des profils](https://developer.apple.com/help/account/basics/about-your-developer-account).
