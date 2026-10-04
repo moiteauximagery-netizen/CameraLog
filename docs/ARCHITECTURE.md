@@ -50,8 +50,13 @@ Un seul container et un seul contexte d'écriture. Autosave désactivé ; commit
 - `SchemaV2` ajoute `ShotSheet`, la relation `Roll.sheets`, et sur `TakeEntry` les champs facultatifs `label`, `cardOrder`, `snapshotData` et `sheet`. Ces ajouts sont compatibles avec une migration légère, déclarée dans `CameraLogMigrationPlan`.
 - Après ouverture, `migrateLegacyTakes()` rattache les prises sans fiche et leur attribue un ordre de carte selon leur date de création. Elle ne modifie ni identifiants, ni réglages historiques, ni statuts, ni noms de clips saisis. Elle est idempotente.
 - Le champ `settings` (`CaptureSettings`) des prises reste celui des anciennes prises ; les nouvelles prises utilisent `snapshotData`. `TakeEntry.snapshot` lit l'un ou l'autre.
+- `SchemaV2` (`Data/SchemaV2.swift`) est la copie figée du modèle de la build 15 (commit 20df5d9). `SchemaV3`, le modèle courant, ajoute sur `Production` les champs facultatifs `lensKitData` (série d'objectifs) et `filterKitData` (kit de filtres). Un kit de filtres absent signifie « kit standard » ; un kit vidé reste vide.
 
-Deux tests couvrent la migration : l'un recrée une base avec `SchemaV1`, l'autre ouvre une base écrite en CI par le code réellement livré (commit 241fd6e, voir `ci/legacy/LegacyFixtureWriter.swift`). Toute évolution future doit ajouter un `SchemaV3` et conserver ces deux tests.
+Trois tests couvrent la migration : l'un recrée une base avec `SchemaV1` ; les deux autres ouvrent des bases écrites en CI par le code réellement livré, celui de l'IPA du run 7 (commit 241fd6e, `ci/legacy/LegacyFixtureWriter.swift`) et celui de la build 15 (commit 20df5d9, `ci/legacy/Build15FixtureWriter.swift`). Toute évolution future doit figer le schéma courant dans un `SchemaVn`, ajouter une étape au plan de migration, ajouter un écrivain de base pour la dernière build livrée et conserver ces tests.
+
+### Rafraîchissement des écrans
+
+Les tableaux de relations remplis par un inverse SwiftData (les caméras d'une journée, par exemple) ne déclenchent pas toujours la mise à jour des vues. Le repository est `@Observable` et incrémente `revision` à chaque commit ; les écrans qui affichent des listes lisent cette valeur et se recalculent après chaque écriture.
 
 Ne pas transformer automatiquement les UUID uniques ou activer CloudKit : cela exige une conception de synchronisation dédiée.
 

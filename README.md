@@ -35,7 +35,9 @@ Le projet Xcode est fourni, sans dépendance à XcodeGen, CocoaPods ou un packag
 
 ## Parcours disponible
 
-- Créer une production, une journée et une caméra ; reprendre le rapport le plus récent depuis l'accueil.
+- Créer une production, puis une journée : elle démarre avec CAM A. **Ajouter la caméra B** (puis C…) se fait en un toucher, sans formulaire. Reprendre le rapport le plus récent depuis l'accueil.
+- Tout reste modifiable : **Réglages** d'une production (informations, série d'objectifs, kit de filtres), **Modifier** une journée (numéro, date, lieu, unité, notes), balayer une caméra pour la modifier (nom, modèle, n° de série) ou la retirer de la journée, toucher l'en-tête d'un roll pour le renommer ou saisir card et reel.
+- Chaque écran se met à jour immédiatement après une création ou une modification.
 - Dans le rapport (une caméra, une journée), toucher **Nouvelle fiche**. La fiche contient :
   - l'identification : scène, plan, **roll** (par exemple A010) ;
   - les réglages : objectif, diaph, filtres, ISO, température, FPS, shutter ;
@@ -55,7 +57,13 @@ Le projet Xcode est fourni, sans dépendance à XcodeGen, CocoaPods ou un packag
 - **Tout reprendre** accepte toutes les suggestions encore en attente, sans jamais remplacer une valeur déjà tapée.
 - Un bandeau indique combien de valeurs sont seulement proposées ; l'en-tête indique « Rien d'enregistré », « Modifications non enregistrées » ou « Fiche enregistrée ».
 
-Le plan n'est jamais suggéré. Le roll et la scène peuvent l'être.
+Le plan proposé est le **plan suivant** : 2 → 3, 09 → 10, A → B, 14A → 14B. Il reste une suggestion grise, comme le roll et la scène.
+
+### Objectifs, diaph et filtres en un toucher
+
+- **Objectif** : dans les réglages du projet, saisir la série (« 18, 25, 32, 50, 75 »). La case OBJECTIF affiche alors une flèche ; elle ouvre la liste des focales. Toucher le texte de la case permet toujours une valeur libre. Sans série, pas de flèche.
+- **Diaph** : la flèche de la case DIAPH ouvre les diaphs pleins (1 → 22), chacun suivi de ses tiers : « 2.8 », « 2.8 ⅓ », « 2.8 ⅔ ».
+- **Filtres** : le projet a un kit de familles et de valeurs (par défaut ND et IRND 0.3 → 2.1, BPM, HBM et Glimmer 1/8 → 1, POLA), modifiable dans les réglages du projet. La flèche de la case FILTRES montre chaque famille avec ses valeurs : un toucher ajoute le filtre, une autre valeur de la même famille le remplace, toucher une valeur choisie la retire. Les filtres se combinent : « ND 0.9 + BPM 1/4 ».
 
 ### Roll/card automatique
 
@@ -63,12 +71,12 @@ La case **Roll** se remplit comme les autres. À l'enregistrement, la fiche est 
 
 ### Takes, libellés et cerclage
 
-- **+** crée la prise suivante de la fiche (T01, T02…) en un geste. Si la fiche n'est pas encore enregistrée, ou si elle a été modifiée, + l'enregistre d'abord.
+- **+** crée la prise suivante de la fiche (1, 2, 3…) en un geste. Si la fiche n'est pas encore enregistrée, ou si elle a été modifiée, + l'enregistre d'abord.
 - Chaque prise conserve un **instantané des réglages** de la fiche au moment de sa création. Modifier ensuite la fiche ne réécrit pas les prises existantes ; l'édition d'une prise affiche son instantané.
-- En mode normal, toucher une prise ouvre une édition courte : libellé libre ou boutons **PU** / **FC**, statuts (MOS, VFX…), commentaire, suppression. Le libellé ne change ni le numéro de prise, ni le clip, ni Circle : « T03 · PU ».
+- En mode normal, toucher une prise **transforme sa case en champ de saisie** : taper « PU » (ou « 4PU ») puis OK, ou utiliser les raccourcis **PU** / **FC** / Effacer au-dessus du clavier. La case affiche alors « 4PU ». Le libellé ne change ni le numéro de prise, ni le clip, ni Circle. Un appui long sur une prise (ou « Détails » au-dessus du clavier) ouvre les statuts (MOS, VFX…), le commentaire, les réglages enregistrés et la suppression.
 - **FC** (faux clip) désigne un clip réellement créé sur la caméra mais inexploitable : c'est une entrée de la séquence, qui occupe donc un numéro de clip. Il n'a aucun lien avec Circle.
 - Le bouton **Cerclage** active un mode où toucher une prise la cercle ou la décercle immédiatement. Le mode actif est signalé par le bouton orange plein, un bandeau orange « CERCLAGE ACTIF » et un cadre orange épais autour des prises. Toucher à nouveau Cerclage rend au toucher son rôle d'édition. Les prises cerclées sont orange, avec une coche.
-- VoiceOver : le bouton est annoncé « Mode cerclage, activé/désactivé » ; chaque prise « Prise 3, clip C005, libellé PU, cerclée/non cerclée », avec une consigne qui dépend du mode. Les changements de mode et les ajouts de prise sont annoncés.
+- VoiceOver : le bouton est annoncé « Mode cerclage, activé/désactivé » ; chaque prise « Prise 3, clip C005, libellé PU, cerclée/non cerclée », avec une consigne qui dépend du mode. Les changements de mode et les ajouts de prise sont annoncés. Les flèches des cases sont annoncées « Choisir objectif/diaphragme/filtres dans la liste ».
 
 ### Numéros de clips : règle retenue
 
@@ -80,7 +88,7 @@ L'ordre de la carte est enregistré pour chaque prise (`cardOrder`) ; le numéro
 
 Les actions qui modifient des numéros déjà affichés montrent **avant confirmation** la liste « ancien → nouveau » :
 
-- **Insérer une prise oubliée…** (section Takes) : choisir le numéro de prise et la position sur la carte (« Avant C004 · 14 / B · T02 »). La prise prend le numéro de cette position ; les clips suivants avancent d'un cran.
+- **Insérer une prise oubliée…** (section Takes) : choisir le numéro de prise et la position sur la carte (« Avant C004 · 14 / B · 2 »). La prise prend le numéro de cette position ; les clips suivants avancent d'un cran.
 - Supprimer une prise ou une fiche : les clips suivants reculent d'un cran. Si le clip existe sur la caméra, mieux vaut le libeller FC.
 - Changer le roll d'une fiche qui a des prises.
 
@@ -95,7 +103,9 @@ La version précédente stockait une entrée `TakeEntry` par prise, rattachée �
 3. L'ordre de carte des anciennes prises suit leur date de création ; les Cxxx affichés en découlent. **L'ancien nom de clip saisi n'est ni effacé ni converti** : il reste visible dans l'édition de la prise, rubrique « Saisi avant la mise à jour », pour comparaison avec la carte.
 4. Cette étape est idempotente. Si elle échoue, rien n'est enregistré et un écran d'erreur s'affiche, sans effacer de fichier.
 
-Les anciennes prises n'avaient pas de libellé : il reste vide. Une base mise à jour ne peut plus être ouverte par l'ancienne version de l'app. Pour conserver les données, installer le nouvel IPA par-dessus l'ancien avec le même compte Apple dans Sideloadly, sans désinstaller l'app.
+Les anciennes prises n'avaient pas de libellé : il reste vide.
+
+La version suivante (schéma 3) ajoute seulement la série d'objectifs et le kit de filtres de chaque production, en champs facultatifs. Une base de la build 15 s'ouvre sans conversion de données : la série d'objectifs est vide et le kit de filtres est le kit standard, jusqu'à modification dans les réglages du projet. Une base mise à jour ne peut plus être ouverte par l'ancienne version de l'app. Pour conserver les données, installer le nouvel IPA par-dessus l'ancien avec le même compte Apple dans Sideloadly, sans désinstaller l'app.
 
 ## Décisions et limites
 
@@ -103,7 +113,7 @@ Les anciennes prises n'avaient pas de libellé : il reste vide. Une base mise à
 - Interface sombre, commandes principales de 44–52 points, typographie système adaptable, libellés VoiceOver pour le cerclage et les prises. Les boutons « Reprendre » mesurent environ 30 points de haut pour garder la fiche compacte. Accessibilité et mise en page restent à vérifier sur appareil, notamment avec les tailles de texte maximales.
 - La sauvegarde est explicite : bouton en bas de fiche, ou + qui enregistre la fiche avant d'ajouter la prise. Tant qu'une fiche est modifiée, le retour est remplacé par « Annuler ». En cas d'échec le repository annule les modifications non enregistrées et l'interface affiche une erreur.
 - Les réglages des fiches sont du texte : objectif, diaph et filtres sont libres ; ISO et température sont des entiers positifs (« 5600K » devient 5600), FPS un nombre positif (« 23,976 » accepté), shutter un angle de 0 à 360°.
-- Le numéro de prise suit le maximum de la fiche + 1, y compris après une entrée FC (T02 · FC puis T03). Il n'est choisi librement que lors d'une insertion tardive.
+- Le numéro de prise suit le maximum de la fiche + 1, y compris après une entrée FC (2FC puis 3). Il n'est choisi librement que lors d'une insertion tardive.
 - Les identifiants UUID sont locaux et stables. Dates/révisions préparent une évolution, mais il n'existe pas encore de journal de synchronisation, de tombstones ou de résolution de conflits.
 - Les rolls sans fiche (restés vides depuis la version précédente, ou vidés par un déplacement) ne sont plus affichés ; ils ne sont pas supprimés.
 - Catalogue d'objectifs, presets, paramètres visibles configurables, clavier caméra spécialisé, saisie timecode, exports et partage restent à implémenter. Les champs TC, codec et LUT de la version précédente sont conservés en base mais ne sont plus affichés.

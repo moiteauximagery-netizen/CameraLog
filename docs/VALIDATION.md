@@ -8,14 +8,16 @@ Le script `scripts/check_project.py` vérifie les références du projet Xcode, 
 
 Chaque run du workflow `iOS - Tests et IPA pour iPhone` :
 
-1. Écrit une base de données avec le **code réellement livré** avant les fiches (commit 241fd6e, celui de l'IPA du run 7), via `ci/legacy/LegacyFixtureWriter.swift` : deux rolls, quatre prises, un nom de clip saisi, Circle, VFX, une scène/plan sur deux rolls.
-2. Exécute les tests unitaires et les tests d'interface de la version courante sur un simulateur iPhone, en leur donnant cette base.
+1. Écrit deux bases de données avec le **code réellement livré** :
+   - avant les fiches (commit 241fd6e, IPA du run 7), via `ci/legacy/LegacyFixtureWriter.swift` : deux rolls, quatre prises, un nom de clip saisi, Circle, VFX, une scène/plan sur deux rolls ;
+   - avec les fiches (commit 20df5d9, IPA build 15), via `ci/legacy/Build15FixtureWriter.swift` : libellé FC, Circle et VFX, prise insérée tardivement, réglages modifiés après les prises, deux rolls, lieu de la journée.
+2. Exécute les tests unitaires et les tests d'interface de la version courante sur un simulateur iPhone, en leur donnant ces bases.
 3. Compile l'app en Release ARM64 pour iPhone et prépare `CameraLog.ipa`, non signé.
 4. Publie la liste des tests exécutés dans une annotation « Tests exécutés » du run, et les captures d'écran des tests d'interface dans l'artefact **CameraLog-diagnostics** (dossier `screenshots`).
 
 Run de référence : [37199328155](https://github.com/moiteauximagery-netizen/CameraLog/actions/runs/37199328155), 18 tests réussis sur 18, IPA produit. Un run précédent (37198308287) avait échoué sur `testNewSheetShowsSuggestionsWithoutFillingFields`, qui vérifiait l'interface sans attendre sa mise à jour ; le test attend désormais explicitement. Les tests ont tourné sur **iPhone SE (3e génération), iOS 26.2** (le plus petit écran disponible sur le runner). Aucun runtime iOS 17 n'est installé sur ce runner : la compatibilité iOS 17 repose sur la cible de déploiement et les API utilisées, pas sur une exécution.
 
-## Tests unitaires (16)
+## Tests unitaires (24)
 
 | Test | Vérifie |
 | --- | --- |
@@ -33,14 +35,23 @@ Run de référence : [37199328155](https://github.com/moiteauximagery-netizen/Ca
 | `testDiskPersistenceAcrossContainers` | Fiche, libellé, Circle et instantané relus après réouverture du fichier |
 | `testOpeningAStoreCreatedByThePreviousVersion` | Base créée avec la copie figée `SchemaV1` : migration, identifiants, anciens noms de clips conservés, ordre de carte par date, idempotence |
 | `testOpeningAStoreWrittenByTheShippedVersion` | Base écrite par le commit 241fd6e : même contrôle sur une vraie base, puis nouvelle prise et réouverture en schéma 2 |
+| `testOpeningAStoreWrittenByBuild15` | Base écrite par la build 15 : identifiants, libellés, Circle, statuts, instantanés, ordre de carte après insertion, lieu ; kits vides puis enregistrés ; nouvelle prise ; réouverture |
+| `testNextPlanIsIncremented` | 2 → 3, 09 → 10, 99 → 100, A → B, 14A → 14B, 3b → 3c ; rien après Z |
+| `testAddingCamerasUsesTheNextLetter` | A, B, C en un geste ; lettre libérée réutilisée ; caméra de la production réutilisée le lendemain |
+| `testEveryCommitChangesTheRevisionReadByScreens` | Chaque écriture signale aux écrans de se recalculer |
+| `testEditingDayCameraAndRoll` | Lieu et numéro de journée, nom et modèle de caméra, nom/card/reel du roll ; doublons refusés ; clips inchangés après renommage |
+| `testLensAndFilterKitsOfTheProduction` | Saisie « 18, 25 32;50mm », tri et doublons ; kit de filtres standard, personnalisé, vidé |
+| `testFilterAndApertureSelection` | Combinaison, remplacement dans la même famille, retrait, IRND distinct de ND, POLA sans valeur ; diaphs pleins et tiers |
+| `testInlineTakeLabel` | « 4PU » sur la prise 4 donne PU ; Circle, statuts et commentaire intacts ; rien d'écrit si inchangé |
 | `testHierarchyAndCreation`, `testSampleData` | Graphe complet et données LES OMBRES |
 
-## Tests d'interface (2)
+## Tests d'interface (3)
 
 Ils pilotent la vraie interface sur le simulateur, avec LES OMBRES en mémoire.
 
-- `testTapEditsInNormalModeAndCirclesInCircleMode` : ouvre le rapport puis la fiche 24/03 ; un toucher en mode normal ouvre l'édition T01, où FC est appliqué ; en mode Cerclage, deux touchers cerclent puis décerclent T01 sans ouvrir l'édition, et le libellé FC reste ; hors cerclage, le toucher rouvre l'édition ; + crée T04, annoncé comme clip C005 ; T04 est ensuite supprimée depuis son édition, après confirmation.
-- `testNewSheetShowsSuggestionsWithoutFillingFields` : une nouvelle fiche affiche « Rien d'enregistré » et des suggestions ; Reprendre remplit l'objectif (35mm) ; Tout reprendre accepte le reste.
+- `testTakeBoxEditsInNormalModeAndCirclesInCircleMode` : dans la fiche 24/03, un toucher transforme la case de la prise 1 en champ ; FC y est saisi et la case affiche « 1FC » ; en mode Cerclage, deux touchers cerclent puis décerclent la prise sans ouvrir de champ et le libellé reste ; hors cerclage, le toucher rouvre le champ ; + crée la prise 4, annoncée clip C005 ; un appui long ouvre ses détails et la supprime après confirmation.
+- `testNewSheetSuggestionsAndQuickPickers` : une nouvelle fiche affiche « Rien d'enregistré », propose le plan suivant, n'a pas de flèche OBJECTIF sans série ; Reprendre remplit l'objectif ; la flèche DIAPH donne « 2.8 ⅓ » ; la flèche FILTRES donne ND 0.6, BPM 1/4 puis ND 0.9, soit « ND 0.9 + BPM 1/4 » ; Tout reprendre accepte le reste.
+- `testNewCameraAndDayEditsAppearImmediately` : dans DAY 12, « Ajouter la caméra » fait apparaître CAM B puis CAM C sans quitter la page ; le lieu modifié s'affiche dès l'enregistrement.
 
 Ces tests utilisent les valeurs d'accessibilité (« cerclée », « activé »), donc vérifient aussi ce que VoiceOver annonce. Ils ne vérifient pas le rendu visuel : les captures sont à relire dans l'artefact.
 
