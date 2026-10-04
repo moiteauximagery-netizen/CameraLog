@@ -3,18 +3,31 @@ import Foundation
 /// Fields of a shot sheet. Identification fields are stored on the sheet and its roll;
 /// setting fields are stored as text keyed by `rawValue`, so an unknown value stays empty.
 enum SheetField: String, CaseIterable, Identifiable {
-    case scene, shot, roll
+    case scene, shot, roll, magazine
     case lens, tStop, filters, iso, whiteBalance, fps, shutter
+    case lut, aspectRatio, format, resolution
+    case lensHeight, focus, tilt
 
     var id: String { rawValue }
+    /// Required to save a sheet.
     static let identification: [SheetField] = [.scene, .shot, .roll]
-    static let settings: [SheetField] = [.lens, .tStop, .filters, .iso, .whiteBalance, .fps, .shutter]
+    /// Saved in the sheet settings and copied into each take snapshot.
+    static let settings: [SheetField] = [.lens, .tStop, .filters, .iso, .whiteBalance, .fps, .shutter,
+                                         .lut, .aspectRatio, .format, .resolution, .lensHeight, .focus, .tilt]
+    /// Shown only while the VFX switch of the sheet is on.
+    static let vfx: [SheetField] = [.lensHeight, .focus, .tilt]
+    /// Offered from a project list (production settings).
+    static let catalogLists: [SheetField] = [.lut, .aspectRatio, .format, .resolution]
+    /// Boxes the production settings may hide. Scene, plan and roll always stay.
+    static let hideable: [SheetField] = [.magazine, .lens, .tStop, .filters, .iso, .whiteBalance, .fps, .shutter,
+                                         .lut, .aspectRatio, .format, .resolution]
 
     var title: String {
         switch self {
         case .scene: return "SCÈNE"
         case .shot: return "PLAN"
         case .roll: return "ROLL"
+        case .magazine: return "MAG #"
         case .lens: return "OBJECTIF"
         case .tStop: return "DIAPH"
         case .filters: return "FILTRES"
@@ -22,6 +35,13 @@ enum SheetField: String, CaseIterable, Identifiable {
         case .whiteBalance: return "TEMPÉRATURE · K"
         case .fps: return "FPS"
         case .shutter: return "SHUTTER · °"
+        case .lut: return "LUT"
+        case .aspectRatio: return "RATIO"
+        case .format: return "FORMAT"
+        case .resolution: return "RÉSOLUTION"
+        case .lensHeight: return "HAUTEUR CAM"
+        case .focus: return "POINT"
+        case .tilt: return "TILT"
         }
     }
 
@@ -30,6 +50,7 @@ enum SheetField: String, CaseIterable, Identifiable {
         case .scene: return "Scène"
         case .shot: return "Plan"
         case .roll: return "Roll"
+        case .magazine: return "Magasin"
         case .lens: return "Objectif"
         case .tStop: return "Diaphragme"
         case .filters: return "Filtres"
@@ -37,6 +58,13 @@ enum SheetField: String, CaseIterable, Identifiable {
         case .whiteBalance: return "Température de couleur"
         case .fps: return "Images par seconde"
         case .shutter: return "Obturateur"
+        case .lut: return "LUT"
+        case .aspectRatio: return "Aspect ratio"
+        case .format: return "Format"
+        case .resolution: return "Résolution"
+        case .lensHeight: return "Hauteur caméra"
+        case .focus: return "Distance de mise au point"
+        case .tilt: return "Inclinaison"
         }
     }
 }
@@ -46,6 +74,11 @@ enum SheetField: String, CaseIterable, Identifiable {
 struct SheetDraft: Equatable {
     var values: [SheetField: String] = [:]
     var notes = ""
+    /// VFX switch: shows camera height, focus distance and tilt, and marks new takes VFX.
+    var vfx = false
+    static let vfxKey = "vfx"
+    /// Boxes hidden by the production settings: never suggested nor accepted.
+    var hiddenFields: Set<SheetField> = []
     var suggestions: [SheetField: String] = [:]
     var suggestionSource = ""
 
@@ -66,7 +99,10 @@ struct SheetDraft: Equatable {
 
     /// A suggestion is pending while its field is really empty.
     func isPending(_ field: SheetField) -> Bool { value(field).isEmpty && suggestion(field) != nil }
-    var pendingFields: [SheetField] { SheetField.allCases.filter(isPending) }
+    func isShown(_ field: SheetField) -> Bool {
+        !hiddenFields.contains(field) && (vfx || !SheetField.vfx.contains(field))
+    }
+    var pendingFields: [SheetField] { SheetField.allCases.filter { isPending($0) && isShown($0) } }
 
     mutating func accept(_ field: SheetField) {
         guard isPending(field), let text = suggestion(field) else { return }
@@ -78,16 +114,21 @@ struct SheetDraft: Equatable {
         for field in pendingFields { accept(field) }
     }
 
+    /// VFX values are saved only while the VFX switch is on.
     var settingsToSave: [String: String] {
         var result: [String: String] = [:]
-        for field in SheetField.settings where !value(field).isEmpty { result[field.rawValue] = value(field) }
+        for field in SheetField.settings where !value(field).isEmpty {
+            if SheetField.vfx.contains(field) && !vfx { continue }
+            result[field.rawValue] = value(field)
+        }
+        if vfx { result[Self.vfxKey] = "1" }
         return result
     }
 
     /// Everything a save would write. Suggestions are deliberately absent.
     var savedContent: [String: String] {
         var result = settingsToSave
-        for field in SheetField.identification { result[field.rawValue] = value(field) }
+        for field in SheetField.identification + [.magazine] { result[field.rawValue] = value(field) }
         result["notes"] = notes.trimmingCharacters(in: .whitespacesAndNewlines)
         return result
     }
@@ -96,10 +137,11 @@ struct SheetDraft: Equatable {
 enum SmartFill {
     /// Values of the previous sheet of the same camera report, offered greyed out.
     /// The plan offered is the next one: 2 → 3, A → B.
-    static func suggestions(scene: String, shot: String, roll: String,
+    static func suggestions(scene: String, shot: String, roll: String, magazine: String = "",
                             settings: [String: String]) -> [SheetField: String] {
         var result: [SheetField: String] = [:]
         if !scene.isEmpty { result[.scene] = scene }
+        if !magazine.isEmpty { result[.magazine] = magazine }
         if let next = ShotIncrement.next(after: shot) { result[.shot] = next }
         if !roll.isEmpty { result[.roll] = roll }
         for field in SheetField.settings {
@@ -179,5 +221,21 @@ extension CaptureSettings {
         result[SheetField.fps.rawValue] = SheetValidation.format(fps)
         result[SheetField.shutter.rawValue] = SheetValidation.format(shutterAngle)
         return result
+    }
+}
+
+/// Lists offered on the sheet (LUT, ratio, format, resolution) and boxes hidden on sheets.
+struct ProjectCatalog: Codable, Equatable {
+    var lists: [String: [String]] = [:]
+    var hidden: [String] = []
+    /// VFX switch hidden on sheets.
+    static let vfxBlock = "vfx"
+
+    func list(_ field: SheetField) -> [String] { lists[field.rawValue] ?? [] }
+    mutating func setList(_ values: [String], for field: SheetField) { lists[field.rawValue] = values }
+    func isHidden(_ key: String) -> Bool { hidden.contains(key) }
+    mutating func setHidden(_ key: String, _ isHidden: Bool) {
+        hidden.removeAll { $0 == key }
+        if isHidden { hidden.append(key) }
     }
 }

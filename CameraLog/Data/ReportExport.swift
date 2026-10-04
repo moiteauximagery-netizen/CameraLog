@@ -62,7 +62,10 @@ enum ReportExport {
         func value(_ field: SheetField) -> String { values[field.rawValue] ?? "" }
         return ["Lens": lens(value(.lens)), "Filters": value(.filters), "Stop": stop(value(.tStop)),
                 "Color Temp": suffixed(value(.whiteBalance), "K"), "FPS": suffixed(value(.fps), "fps"),
-                "Shutter": suffixed(value(.shutter), degree), "ISO": suffixed(value(.iso), "EI")]
+                "Shutter": suffixed(value(.shutter), degree), "ISO": suffixed(value(.iso), "EI"),
+                "Lut": value(.lut), "Aspect Ratio": value(.aspectRatio), "Format": value(.format),
+                "Resolution": value(.resolution), "Focus": value(.focus), "Lens Height": value(.lensHeight),
+                "Tilt": value(.tilt)]
     }
 
     static let dayFormatter: DateFormatter = {
@@ -149,6 +152,7 @@ enum ReportExport {
                                     "report_metadata": [String: String](), "log_data": logData, "takes": takes])
                 }
                 rollReports.append(["roll": roll.name, "camera": camera,
+                                    "report_metadata": roll.card.isEmpty ? [String: String]() : ["magazine": roll.card],
                                     "shooting_date": dayFormatter.string(from: day.date), "entries": entries])
             }
         }

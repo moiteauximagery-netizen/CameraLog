@@ -101,6 +101,8 @@ struct ProductionEditor: View {
     @State private var lenses: [String]
     @State private var lensEntry = ""
     @State private var filters: [EditableFilterFamily]
+    @State private var catalog: ProjectCatalog
+    @State private var listEntries: [SheetField: String] = [:]
     @State private var error: String?
 
     init(repository: CameraLogRepository, production: Production?) {
@@ -117,6 +119,7 @@ struct ProductionEditor: View {
         _end = State(initialValue: production?.endDate ?? Date())
         _lenses = State(initialValue: production?.lensKit ?? [])
         _filters = State(initialValue: (production?.filterKit ?? FilterFamily.defaultKit).map(EditableFilterFamily.init))
+        _catalog = State(initialValue: production?.catalog ?? ProjectCatalog())
     }
 
     var body: some View {
@@ -138,6 +141,8 @@ struct ProductionEditor: View {
                 }
                 lensSection
                 filterSection
+                ForEach(SheetField.catalogLists) { field in listSection(field) }
+                visibleFieldsSection
                 Section("Notes") {
                     TextField("Notes", text: $notes, axis: .vertical)
                 }
@@ -197,6 +202,69 @@ struct ProductionEditor: View {
         }
     }
 
+    private func listSection(_ field: SheetField) -> some View {
+        Section {
+            ForEach(catalog.list(field), id: \.self) { value in Text(value) }
+                .onDelete { offsets in
+                    var values = catalog.list(field)
+                    values.remove(atOffsets: offsets)
+                    catalog.setList(values, for: field)
+                }
+            HStack {
+                TextField(listPlaceholder(field), text: Binding(get: { listEntries[field] ?? "" },
+                                                                set: { listEntries[field] = $0 }))
+                    .autocorrectionDisabled()
+                    .onSubmit { addListValues(field) }
+                    .accessibilityIdentifier("list-entry-\(field.rawValue)")
+                Button("Ajouter") { addListValues(field) }
+                    .disabled((listEntries[field] ?? "").trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        } header: {
+            Text("Liste \(field.spokenName)")
+        } footer: {
+            Text("Proposée par la flèche de la case \(field.title). Valeurs séparées par des virgules.")
+        }
+    }
+
+    private func listPlaceholder(_ field: SheetField) -> String {
+        switch field {
+        case .lut: return "Show LUT v2, Rec709…"
+        case .aspectRatio: return "1.85, 2.39…"
+        case .format: return "ARRIRAW, ProRes 4444…"
+        case .resolution: return "4.6K 3:2 OG, UHD…"
+        default: return ""
+        }
+    }
+
+    private func addListValues(_ field: SheetField) {
+        var values = catalog.list(field)
+        for value in FilterFamily.parseGrades(listEntries[field] ?? "")
+        where !values.contains(where: { $0.caseInsensitiveCompare(value) == .orderedSame }) {
+            values.append(value)
+        }
+        catalog.setList(values, for: field)
+        listEntries[field] = ""
+    }
+
+    private var visibleFieldsSection: some View {
+        Section {
+            ForEach(SheetField.hideable) { field in
+                Toggle(field.spokenName, isOn: shownBinding(field.rawValue))
+                    .accessibilityIdentifier("show-\(field.rawValue)")
+            }
+            Toggle("VFX : hauteur, point, tilt", isOn: shownBinding(ProjectCatalog.vfxBlock))
+                .accessibilityIdentifier("show-vfx")
+        } header: {
+            Text("Cases affichées sur les fiches")
+        } footer: {
+            Text("Scène, plan et roll restent toujours affichés. Une case masquée n’est plus proposée ; les valeurs déjà enregistrées restent dans les exports.")
+        }
+    }
+
+    private func shownBinding(_ key: String) -> Binding<Bool> {
+        Binding(get: { !catalog.isHidden(key) }, set: { catalog.setHidden(key, !$0) })
+    }
+
     private func addLenses() {
         lenses = LensKit.merged(lenses, adding: LensKit.parse(lensEntry))
         lensEntry = ""
@@ -204,6 +272,9 @@ struct ProductionEditor: View {
 
     private func save() {
         if !lensEntry.trimmingCharacters(in: .whitespaces).isEmpty { addLenses() }
+        for field in SheetField.catalogLists where !(listEntries[field] ?? "").trimmingCharacters(in: .whitespaces).isEmpty {
+            addListValues(field)
+        }
         let kit = filters.map { FilterFamily(name: $0.name, grades: FilterFamily.parseGrades($0.grades)) }
         if hasEnd && end < start { error = "La fin doit suivre le début."; return }
         do {
@@ -213,7 +284,7 @@ struct ProductionEditor: View {
             }
             try repository.updateProduction(target, name: name, client: client, director: director,
                 cinematographer: cinematographer, start: start, end: hasEnd ? end : nil,
-                projectNumber: number, notes: notes, lensKit: lenses, filterKit: kit)
+                projectNumber: number, notes: notes, lensKit: lenses, filterKit: kit, catalog: catalog)
             dismiss()
         } catch { self.error = error.localizedDescription }
     }

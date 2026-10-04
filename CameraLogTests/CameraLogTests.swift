@@ -796,6 +796,127 @@ import SwiftData
         XCTAssertEqual(ReportExport.sceneLabel(scene: "24", shot: ""), "24")
     }
 
+    /// Store written in CI by the code of IPA build 18 (commit 90ec24a, schema 3, production kits).
+    func testOpeningAStoreWrittenByBuild18() throws {
+        guard let directory = ProcessInfo.processInfo.environment["CAMERALOG_V3_FIXTURE"] else {
+            throw XCTSkip("The build 18 store is produced by the CI workflow.")
+        }
+        let source = URL(fileURLWithPath: directory)
+        let ids = try JSONDecoder().decode([String].self, from: Data(contentsOf: source.appendingPathComponent("ids.json")))
+            .compactMap(UUID.init(uuidString:))
+        let (copy, _) = try temporaryStoreURL()
+        defer { try? FileManager.default.removeItem(at: copy) }
+        for name in try FileManager.default.contentsOfDirectory(atPath: directory) where name.hasPrefix("build18.store") {
+            try FileManager.default.copyItem(at: source.appendingPathComponent(name), to: copy.appendingPathComponent(name))
+        }
+        let url = copy.appendingPathComponent("build18.store")
+        let container = try CameraLogStore.makeContainer(url: url)
+        let repo = CameraLogRepository(context: container.mainContext)
+        XCTAssertEqual(try repo.migrateLegacyTakes(), 0)
+        let takes = try container.mainContext.fetch(FetchDescriptor<TakeEntry>())
+        XCTAssertEqual(Set(takes.map(\.id)), Set(ids))
+        let byID = Dictionary(uniqueKeysWithValues: takes.map { ($0.id, $0) })
+        let first = try XCTUnwrap(byID[ids[0]]), falseClip = try XCTUnwrap(byID[ids[1]]), third = try XCTUnwrap(byID[ids[2]])
+        XCTAssertEqual(falseClip.number, 0); XCTAssertEqual(falseClip.labelText, "FC")
+        XCTAssertEqual(TakeLabel.title(number: third.number, label: third.labelText), "2PU"); XCTAssertTrue(third.isCircle)
+        XCTAssertEqual(first.snapshot["tStop"], "2.8 ⅓")
+        let roll = try XCTUnwrap(first.roll)
+        XCTAssertEqual(roll.name, "A002"); XCTAssertEqual(roll.card, "E")
+        XCTAssertEqual(roll.clipSequence.map(\.id), ids)
+        let production = try XCTUnwrap(roll.report?.day?.production)
+        XCTAssertEqual(production.lensKit, ["25 mm", "50 mm"])
+        XCTAssertEqual(production.filterKit, [FilterFamily(name: "ND", grades: ["0.3", "0.6"])])
+        XCTAssertEqual(production.catalog, ProjectCatalog(), "Schema 4 catalog starts empty")
+        let report = try XCTUnwrap(roll.report)
+        XCTAssertEqual(repo.draft(for: try XCTUnwrap(first.sheet), in: report).value(.magazine), "E")
+        var catalog = ProjectCatalog()
+        catalog.setList(["Show LUT"], for: .lut)
+        try repo.updateProduction(production, name: production.name, client: "", director: "", cinematographer: "",
+            start: production.startDate, end: nil, projectNumber: "", notes: "",
+            lensKit: production.lensKit, filterKit: production.filterKit, catalog: catalog)
+        let reopened = try CameraLogStore.makeContainer(url: url)
+        XCTAssertEqual(try reopened.mainContext.fetch(FetchDescriptor<Production>()).first?.catalog.list(.lut), ["Show LUT"])
+    }
+
+    func testVFXSwitchShowsHeightFocusTiltAndMarksTakes() throws {
+        let (_, repo) = try setupStore()
+        let (_, report) = try report(repo)
+        var draft = sheetDraft("14", "A", roll: "A010", [.lensHeight: "1,45 m", .focus: "3.2 m", .tilt: "-5°"])
+        XCTAssertNil(draft.settingsToSave["lensHeight"], "VFX values are not saved while the switch is off")
+        XCTAssertFalse(draft.isShown(.focus))
+        draft.vfx = true
+        XCTAssertTrue(draft.isShown(.focus))
+        let sheet = try repo.saveSheet(draft, sheet: nil, in: report)
+        XCTAssertEqual(sheet.settings["vfx"], "1")
+        XCTAssertEqual(sheet.settings["lensHeight"], "1,45 m"); XCTAssertEqual(sheet.settings["tilt"], "-5°")
+        let take = try repo.addNextTake(to: sheet)
+        XCTAssertTrue(take.statusValues.contains(TakeStatus.vfx.rawValue))
+        XCTAssertEqual(take.snapshot["focus"], "3.2 m")
+
+        var reopened = repo.draft(for: sheet, in: report)
+        XCTAssertTrue(reopened.vfx)
+        reopened.vfx = false
+        try repo.saveSheet(reopened, sheet: sheet, in: report)
+        XCTAssertNil(sheet.settings["vfx"]); XCTAssertNil(sheet.settings["focus"])
+        let plain = try repo.addNextTake(to: sheet)
+        XCTAssertFalse(plain.statusValues.contains(TakeStatus.vfx.rawValue))
+        XCTAssertEqual(take.snapshot["focus"], "3.2 m", "Earlier takes keep their VFX data")
+
+        var filters = SearchFilters(); filters.toggle("VFX", in: .status)
+        let production = try XCTUnwrap(report.day?.production)
+        XCTAssertEqual(ProjectSearch.run(production, filters: filters).hits.first?.takes.map(\.id), [take.id])
+        let row = ReportExport.rows(day: try XCTUnwrap(report.day), reports: [report]).first
+        XCTAssertEqual(row?["Lens Height"], "1,45 m"); XCTAssertEqual(row?["Focus"], "3.2 m"); XCTAssertEqual(row?["Tilt"], "-5°")
+    }
+
+    func testMagazineImageFieldsCatalogAndHiddenBoxes() throws {
+        let (_, repo) = try setupStore()
+        let (production, report) = try report(repo)
+        var draft = sheetDraft("14", "A", roll: "A010", [.lut: "Show LUT", .aspectRatio: "2.39", .format: "ARRIRAW",
+                                                        .resolution: "4.6K"])
+        draft[.magazine] = "E"
+        let sheet = try repo.saveSheet(draft, sheet: nil, in: report)
+        XCTAssertEqual(sheet.roll?.card, "E", "The magazine is the card of the roll")
+        XCTAssertEqual(sheet.settings["lut"], "Show LUT")
+        let take = try repo.addNextTake(to: sheet)
+
+        let next = repo.newSheetDraft(for: report)
+        XCTAssertEqual(next.suggestion(.magazine), "E")
+        XCTAssertEqual(next.suggestion(.aspectRatio), "2.39")
+        let second = try repo.saveSheet(sheetDraft("14", "B", roll: "A010"), sheet: nil, in: report)
+        XCTAssertEqual(second.roll?.card, "E", "A new sheet without magazine keeps the card")
+        var edited = repo.draft(for: second, in: report)
+        XCTAssertEqual(edited.value(.magazine), "E")
+        edited[.magazine] = "F"
+        try repo.saveSheet(edited, sheet: second, in: report)
+        XCTAssertEqual(sheet.roll?.card, "F")
+
+        let row = try XCTUnwrap(ReportExport.rows(day: try XCTUnwrap(report.day), reports: [report]).first)
+        XCTAssertEqual(row["Lut"], "Show LUT"); XCTAssertEqual(row["Aspect Ratio"], "2.39")
+        XCTAssertEqual(row["Format"], "ARRIRAW"); XCTAssertEqual(row["Resolution"], "4.6K")
+        XCTAssertEqual(take.snapshot["format"], "ARRIRAW")
+
+        var catalog = ProjectCatalog()
+        catalog.setList(["Show LUT", "Rec709"], for: .lut)
+        catalog.setHidden(SheetField.aspectRatio.rawValue, true)
+        catalog.setHidden(ProjectCatalog.vfxBlock, true)
+        try repo.updateProduction(production, name: production.name, client: "", director: "", cinematographer: "",
+            start: production.startDate, end: nil, projectNumber: "", notes: "",
+            lensKit: [], filterKit: production.filterKit, catalog: catalog)
+        XCTAssertEqual(production.catalog.list(.lut), ["Show LUT", "Rec709"])
+        var hidden = repo.newSheetDraft(for: report)
+        hidden.suggestions[.aspectRatio] = "2.39"
+        hidden.suggestions[.lut] = "Rec709"
+        XCTAssertTrue(hidden.hiddenFields.contains(.aspectRatio))
+        XCTAssertFalse(hidden.pendingFields.contains(.aspectRatio), "A hidden box is never suggested")
+        XCTAssertTrue(hidden.pendingFields.contains(.lut))
+        var all = hidden
+        all.acceptAll()
+        XCTAssertEqual(all.value(.aspectRatio), "", "Tout reprendre ignores hidden boxes")
+        catalog.setHidden(SheetField.aspectRatio.rawValue, false)
+        XCTAssertFalse(catalog.isHidden("aspectRatio"))
+    }
+
     func testSampleData() throws {
         let (container, repo) = try setupStore()
         try SampleData.load(into: repo)

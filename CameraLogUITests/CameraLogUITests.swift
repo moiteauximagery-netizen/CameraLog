@@ -149,6 +149,18 @@ final class CameraLogUITests: XCTestCase {
         app.buttons["filters-done"].tap()
         wait(app.textFields["field-filters"], value: "ND 0.9 + BPM 1/4")
 
+        // VFX switch reveals camera height, focus distance and tilt.
+        XCTAssertFalse(app.textFields["field-focus"].exists)
+        let vfx = app.switches["vfx-toggle"]
+        for _ in 0..<4 where !(vfx.exists && vfx.isHittable) { app.swipeUp() }
+        vfx.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+        XCTAssertTrue(app.textFields["field-lensHeight"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields["field-focus"].exists)
+        XCTAssertTrue(app.textFields["field-tilt"].exists)
+        attach(app, "9b Bloc VFX")
+        app.swipeDown()
+        app.swipeDown()
+
         // Tout reprendre fills scene, plan 05 and roll: the roll box shows only 004 after the A.
         acceptAll.tap()
         XCTAssertTrue(app.buttons["accept-all"].waitForNonExistence(timeout: 5))

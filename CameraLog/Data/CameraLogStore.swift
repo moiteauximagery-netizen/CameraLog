@@ -2,9 +2,10 @@ import Foundation
 import Observation
 import SwiftData
 
-/// Schema 3 adds the lens and filter kits of a production. Current models are top-level types.
-enum SchemaV3: VersionedSchema {
-    static let versionIdentifier = Schema.Version(3, 0, 0)
+/// Schema 4 adds the project catalog (LUT, ratio, format, resolution lists and visible fields).
+/// Current models are top-level types.
+enum SchemaV4: VersionedSchema {
+    static let versionIdentifier = Schema.Version(4, 0, 0)
     static var models: [any PersistentModel.Type] {
         [Production.self, ShootDay.self, Camera.self, CameraReport.self, Roll.self, ShotSheet.self, TakeEntry.self]
     }
@@ -13,15 +14,16 @@ enum SchemaV3: VersionedSchema {
 /// Each step only adds entities, relationships or optional attributes: lightweight migrations keep
 /// every row and identifier. Version 1 takes are then attached to sheets by `migrateLegacyTakes()`.
 enum CameraLogMigrationPlan: SchemaMigrationPlan {
-    static var schemas: [any VersionedSchema.Type] { [SchemaV1.self, SchemaV2.self, SchemaV3.self] }
+    static var schemas: [any VersionedSchema.Type] { [SchemaV1.self, SchemaV2.self, SchemaV3.self, SchemaV4.self] }
     static var stages: [MigrationStage] {
         [.lightweight(fromVersion: SchemaV1.self, toVersion: SchemaV2.self),
-         .lightweight(fromVersion: SchemaV2.self, toVersion: SchemaV3.self)]
+         .lightweight(fromVersion: SchemaV2.self, toVersion: SchemaV3.self),
+         .lightweight(fromVersion: SchemaV3.self, toVersion: SchemaV4.self)]
     }
 }
 
 enum CameraLogStore {
-    static let schema = Schema(versionedSchema: SchemaV3.self)
+    static let schema = Schema(versionedSchema: SchemaV4.self)
 
     static func makeContainer(inMemory: Bool = false, url: URL? = nil) throws -> ModelContainer {
         let configuration: ModelConfiguration
@@ -128,7 +130,8 @@ enum CameraLogStore {
 
     func updateProduction(_ production: Production, name: String, client: String, director: String,
                           cinematographer: String, start: Date, end: Date?, projectNumber: String,
-                          notes: String, lensKit: [String], filterKit: [FilterFamily]) throws {
+                          notes: String, lensKit: [String], filterKit: [FilterFamily],
+                          catalog: ProjectCatalog? = nil) throws {
         let name = try required(name, "Le nom")
         if let end, end < start { throw LogError.invalid("La fin doit suivre le début.") }
         production.name = name; production.client = client; production.director = director
@@ -139,6 +142,7 @@ enum CameraLogStore {
             let name = family.name.trimmingCharacters(in: .whitespacesAndNewlines)
             return name.isEmpty ? nil : FilterFamily(name: name, grades: family.grades)
         }
+        if let catalog { production.catalog = catalog }
         production.updatedAt = Date(); production.revision += 1
         try commit()
     }
@@ -238,8 +242,13 @@ enum CameraLogStore {
             .max { $0.lastActivity < $1.lastActivity }
     }
 
+    private func hiddenFields(in report: CameraReport) -> Set<SheetField> {
+        Set((report.day?.production?.catalog.hidden ?? []).compactMap(SheetField.init(rawValue:)))
+    }
+
     func newSheetDraft(for report: CameraReport) -> SheetDraft {
         var draft = SheetDraft()
+        draft.hiddenFields = hiddenFields(in: report)
         suggest(into: &draft, report: report, excluding: nil)
         return draft
     }
@@ -249,8 +258,11 @@ enum CameraLogStore {
         draft[.scene] = sheet.scene
         draft[.shot] = sheet.shot
         draft[.roll] = sheet.roll?.name ?? ""
+        draft[.magazine] = sheet.roll?.card ?? ""
         let settings = sheet.settings
         for field in SheetField.settings { draft[field] = settings[field.rawValue] ?? "" }
+        draft.vfx = settings[SheetDraft.vfxKey] == "1"
+        draft.hiddenFields = hiddenFields(in: report)
         draft.notes = sheet.notes
         suggest(into: &draft, report: report, excluding: sheet)
         return draft
@@ -259,8 +271,8 @@ enum CameraLogStore {
     private func suggest(into draft: inout SheetDraft, report: CameraReport, excluding sheet: ShotSheet?) {
         guard let previous = previousSheet(in: report, excluding: sheet) else { return }
         let rollName = previous.roll?.name ?? ""
-        draft.suggestions = SmartFill.suggestions(scene: previous.scene, shot: previous.shot,
-                                                  roll: rollName, settings: previous.settings)
+        draft.suggestions = SmartFill.suggestions(scene: previous.scene, shot: previous.shot, roll: rollName,
+                                                  magazine: previous.roll?.card ?? "", settings: previous.settings)
         draft.suggestionSource = "la fiche \(previous.title) · \(rollName)"
     }
 
@@ -296,7 +308,9 @@ enum CameraLogStore {
         var settings = try SheetValidation.normalizedSettings(draft.settingsToSave)
         if let existing {
             // Keep values written by a later version for fields this screen does not show.
-            for (key, value) in existing.settings where SheetField(rawValue: key) == nil { settings[key] = value }
+            for (key, value) in existing.settings where SheetField(rawValue: key) == nil && key != SheetDraft.vfxKey {
+                settings[key] = value
+            }
         }
         let target = roll(named: rollName, in: report)
         if let target, target.currentSheets.contains(where: {
@@ -321,6 +335,9 @@ enum CameraLogStore {
             sheet = ShotSheet(scene: scene, shot: shot, roll: roll)
             context.insert(sheet)
         }
+        // The magazine (card) belongs to the roll. A new sheet never clears the card of an existing roll.
+        let magazine = draft.value(.magazine)
+        if existing != nil || !magazine.isEmpty { roll.card = magazine }
         sheet.scene = scene
         sheet.shot = shot
         sheet.settings = settings
@@ -349,7 +366,13 @@ enum CameraLogStore {
         guard let roll = sheet.roll else { throw LogError.invalid("Roll introuvable.") }
         let order = (roll.takes.filter { $0.roll?.id == roll.id }.compactMap(\.cardOrder).max() ?? 0) + 1
         let take = TakeEntry(number: nextTakeNumber(in: sheet), sheet: sheet, roll: roll, cardOrder: order)
+        markVFX(take, sheet: sheet)
         context.insert(take); try commit(); return take
+    }
+
+    /// Takes recorded while the VFX switch of their sheet is on get the VFX status.
+    private func markVFX(_ take: TakeEntry, sheet: ShotSheet) {
+        if sheet.settings[SheetDraft.vfxKey] == "1" { take.statusValues.append(TakeStatus.vfx.rawValue) }
     }
 
     /// Clips that inserting a forgotten take at `position` (1-based) would renumber.
@@ -377,6 +400,7 @@ enum CameraLogStore {
             take.cardOrder = index + 1 < position ? index + 1 : index + 2
         }
         let take = TakeEntry(number: number, sheet: sheet, roll: roll, cardOrder: position)
+        markVFX(take, sheet: sheet)
         context.insert(take); try commit(); return take
     }
 

@@ -40,6 +40,8 @@ struct SheetView: View {
     private var isDirty: Bool { draft.savedContent != saved.savedContent }
     private var lensKit: [String] { report.day?.production?.lensKit ?? [] }
     private var filterKit: [FilterFamily] { report.day?.production?.filterKit ?? FilterFamily.defaultKit }
+    private var catalog: ProjectCatalog { report.day?.production?.catalog ?? ProjectCatalog() }
+    private var vfxShown: Bool { !catalog.isHidden(ProjectCatalog.vfxBlock) }
     private var nextNumber: Int { sheet.map { repository.nextTakeNumber(in: $0) } ?? 1 }
     private var rollPrefix: String? { RollNaming.prefix(forCamera: report.camera?.name) }
     private var isComplete: Bool { SheetField.identification.allSatisfy { !draft.value($0).isEmpty } }
@@ -55,12 +57,15 @@ struct SheetView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
                 statusHeader
-                row([.scene, .shot, .roll])
+                row([.scene, .shot, .roll, .magazine])
                 if !draft.pendingFields.isEmpty { suggestionBar }
                 row([.lens, .tStop])
-                cell(.filters)
+                row([.filters])
                 row([.iso, .whiteBalance])
                 row([.fps, .shutter])
+                row([.lut, .aspectRatio])
+                row([.format, .resolution])
+                if vfxShown { vfxSection }
                 takesSection
                 notesCell
             }
@@ -179,10 +184,35 @@ struct SheetView: View {
         }
     }
 
-    private func row(_ fields: [SheetField]) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            ForEach(fields) { field in cell(field) }
+    /// Boxes of a row, without those hidden in the production settings.
+    @ViewBuilder private func row(_ fields: [SheetField]) -> some View {
+        let shown = fields.filter { !draft.hiddenFields.contains($0) }
+        if !shown.isEmpty {
+            HStack(alignment: .top, spacing: 8) {
+                ForEach(shown) { field in cell(field) }
+            }
         }
+    }
+
+    private var vfxSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle(isOn: $draft.vfx) {
+                Label("VFX", systemImage: "cube.transparent")
+                    .font(.headline)
+            }
+            .tint(.orange)
+            .frame(minHeight: 44)
+            .accessibilityHint("Affiche hauteur caméra, point et tilt. Les nouvelles prises sont marquées VFX.")
+            .accessibilityIdentifier("vfx-toggle")
+            if draft.vfx {
+                HStack(alignment: .top, spacing: 8) {
+                    ForEach(SheetField.vfx) { field in cell(field) }
+                }
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 6)
+        .background(draft.vfx ? Color.orange.opacity(0.12) : Color.gray.opacity(0.08),
+                    in: RoundedRectangle(cornerRadius: 12))
     }
 
     private func cell(_ field: SheetField) -> some View {
@@ -565,6 +595,7 @@ struct SheetView: View {
         case .lens: return !lensKit.isEmpty
         case .tStop: return true
         case .filters: return !filterKit.isEmpty
+        case .lut, .aspectRatio, .format, .resolution: return !catalog.list(field).isEmpty
         default: return false
         }
     }
@@ -641,6 +672,15 @@ struct SheetView: View {
                 }
                 .frame(maxHeight: 380)
             }
+        case .lut, .aspectRatio, .format, .resolution:
+            ScrollView {
+                ValueGrid(values: catalog.list(field), columns: field == .aspectRatio ? 3 : 2,
+                          selected: { $0 == draft.value(field) }) { value in
+                    draft[field] = value
+                    picker = nil
+                }
+            }
+            .frame(maxHeight: 360)
         default:
             EmptyView()
         }
@@ -711,14 +751,14 @@ private extension SheetField {
         switch self {
         case .iso, .whiteBalance: return .numberPad
         case .fps, .shutter: return .decimalPad
-        case .roll: return .numbersAndPunctuation
+        case .roll, .lensHeight, .focus, .tilt: return .numbersAndPunctuation
         default: return .default
         }
     }
 
     var capitalization: TextInputAutocapitalization {
         switch self {
-        case .scene, .shot, .roll: return .characters
+        case .scene, .shot, .roll, .magazine: return .characters
         default: return .never
         }
     }

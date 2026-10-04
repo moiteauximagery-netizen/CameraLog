@@ -72,12 +72,31 @@ jobs:
           ls -la "$RUNNER_TEMP/v2"
           echo "CAMERALOG_V2_FIXTURE=$RUNNER_TEMP/v2" >> "$GITHUB_ENV"
 
+      - name: Base écrite par la build 18 (commit 90ec24a, kits du projet)
+        run: |
+          set -o pipefail
+          build18="$RUNNER_TEMP/build18"
+          git worktree add --detach "$build18" 90ec24a225caf260e2fe717c9ad5df8397dcec5d
+          cp ci/legacy/Build18FixtureWriter.swift "$build18/CameraLogTests/"
+          (cd "$build18" && python3 scripts/generate_project.py)
+          TEST_RUNNER_CAMERALOG_V3_FIXTURE="$RUNNER_TEMP/v3" xcodebuild test \
+            -project "$build18/CameraLog.xcodeproj" -scheme CameraLog \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+            -destination-timeout 180 \
+            -only-testing:CameraLogTests/Build18FixtureWriter \
+            -derivedDataPath "$RUNNER_TEMP/build18-dd" \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/build18-fixture.log
+          test -f "$RUNNER_TEMP/v3/build18.store"
+          test -f "$RUNNER_TEMP/v3/ids.json"
+          echo "CAMERALOG_V3_FIXTURE=$RUNNER_TEMP/v3" >> "$GITHUB_ENV"
+
       - name: Tests XCTest sur simulateur
         run: |
           set -o pipefail
           mkdir -p build
           TEST_RUNNER_CAMERALOG_V1_FIXTURE="$CAMERALOG_V1_FIXTURE" \
-          TEST_RUNNER_CAMERALOG_V2_FIXTURE="$CAMERALOG_V2_FIXTURE" xcodebuild test \
+          TEST_RUNNER_CAMERALOG_V2_FIXTURE="$CAMERALOG_V2_FIXTURE" \
+          TEST_RUNNER_CAMERALOG_V3_FIXTURE="$CAMERALOG_V3_FIXTURE" xcodebuild test \
             -project CameraLog.xcodeproj -scheme CameraLog \
             -configuration Debug \
             -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
@@ -122,7 +141,7 @@ jobs:
 
       - name: Erreurs lisibles dans le résumé du run
         if: failure()
-        run: python3 scripts/report_errors.py build/legacy-fixture.log build/build15-fixture.log build/tests.log build/device-build.log
+        run: python3 scripts/report_errors.py build/legacy-fixture.log build/build15-fixture.log build/build18-fixture.log build/tests.log build/device-build.log
 
       - name: Captures d'écran des tests d'interface
         if: always()

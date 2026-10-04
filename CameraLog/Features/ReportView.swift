@@ -211,7 +211,7 @@ struct RollEditor: View {
                     TextField("Roll, par exemple A010", text: $name)
                         .textInputAutocapitalization(.characters)
                         .autocorrectionDisabled()
-                    TextField("Card", text: $card)
+                    TextField("Magasin # (carte)", text: $card)
                     TextField("Reel", text: $reel)
                 } footer: {
                     Text("Renommer le roll renomme la carte de toutes ses fiches ; les numéros de clips ne changent pas.")

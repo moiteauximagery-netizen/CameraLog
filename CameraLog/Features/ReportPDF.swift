@@ -25,10 +25,24 @@ enum ReportPDF {
         Column(title: "K", width: 44) { take, _ in ReportPDF.value(take, .whiteBalance) },
         Column(title: "FPS", width: 40) { take, _ in ReportPDF.value(take, .fps) },
         Column(title: "SHUTTER", width: 52) { take, _ in ReportPDF.value(take, .shutter) },
-        Column(title: "NOTES", width: 0) { take, _ in
-            [take.notes, take.sheet?.notes ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")
-        }
+        Column(title: "NOTES", width: 0) { take, _ in ReportPDF.notes(take) }
     ]
+
+    /// Notes, then VFX data and image settings recorded with the take.
+    static func notes(_ take: TakeEntry) -> String {
+        let s = take.snapshot
+        func labelled(_ field: SheetField, _ title: String) -> String? {
+            guard let text = s[field.rawValue], !text.isEmpty else { return nil }
+            return "\(title) \(text)"
+        }
+        let vfx = [labelled(.lensHeight, "H"), labelled(.focus, "Pt"), labelled(.tilt, "Tilt")].compactMap { $0 }
+        let image = [labelled(.lut, "LUT"), labelled(.aspectRatio, "Ratio"), labelled(.format, "Fmt"),
+                     labelled(.resolution, "Rés")].compactMap { $0 }
+        var parts = [take.notes, take.sheet?.notes ?? ""].filter { !$0.isEmpty }
+        if !vfx.isEmpty { parts.append("VFX " + vfx.joined(separator: " ")) }
+        parts += image
+        return parts.joined(separator: " · ")
+    }
 
     private static func font(_ size: CGFloat, _ weight: UIFont.Weight = .regular) -> UIFont {
         .monospacedDigitSystemFont(ofSize: size, weight: weight)
@@ -124,7 +138,7 @@ enum ReportPDF {
                     UIColor(white: 0.9, alpha: 1).setFill()
                     UIRectFill(CGRect(x: margin, y: y, width: width, height: 18))
                     let details = ["\(sequence.count) clip(s) · C001 → \(ClipCode.code(sequence.count))",
-                                   roll.card.isEmpty ? "" : "Card \(roll.card)",
+                                   roll.card.isEmpty ? "" : "Mag # \(roll.card)",
                                    roll.reel.isEmpty ? "" : "Reel \(roll.reel)"].filter { !$0.isEmpty }
                     draw("ROLL \(roll.name)   ·   " + details.joined(separator: "   ·   "),
                          at: CGRect(x: margin + 6, y: y + 3, width: width - 12, height: 13), size: 10, weight: .semibold)

@@ -20,6 +20,8 @@ import SwiftData
     // Schema 3: equipment kits. Optional so older stores migrate without inventing values.
     var lensKitData: Data?
     var filterKitData: Data?
+    // Schema 4: lists offered on the sheet and the boxes the sheet shows.
+    var catalogData: Data?
     init(name: String) {
         id = UUID(); self.name = name; startDate = Date()
         createdAt = Date(); updatedAt = Date(); defaults = CaptureSettings()
@@ -28,6 +30,11 @@ import SwiftData
     var lensKit: [String] {
         get { KitCoding.decode([String].self, from: lensKitData) ?? [] }
         set { lensKitData = KitCoding.encode(newValue) }
+    }
+    /// LUT, ratio, format and resolution lists, and the boxes hidden on sheets.
+    var catalog: ProjectCatalog {
+        get { KitCoding.decode(ProjectCatalog.self, from: catalogData) ?? ProjectCatalog() }
+        set { catalogData = KitCoding.encode(newValue) }
     }
     /// Filter families. Never edited: the standard kit.
     var filterKit: [FilterFamily] {
