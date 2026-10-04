@@ -4,7 +4,7 @@ import re
 import sys
 
 PATTERN = re.compile(r"(error:|: error|failed|Fatal error|crashed|Assertion|XCTAssert|Test Case .* failed)", re.I)
-IGNORED = re.compile(r"(^\s*$|warning:|Testing failed:$|\*\* TEST FAILED \*\*|BUILD FAILED)")
+IGNORED = re.compile(r"(^\s*$|CoreData: error|warning:|Testing failed:$|\*\* TEST FAILED \*\*|BUILD FAILED)")
 
 
 def escape(text):

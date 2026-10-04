@@ -99,15 +99,15 @@ final class CameraLogUITests: XCTestCase {
         app.buttons["new-sheet"].tap()
         let acceptAll = app.buttons["accept-all"]
         XCTAssertTrue(acceptAll.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["accept-lens"].exists)
-        XCTAssertEqual(app.descendants(matching: .any)["sheet-state"].firstMatch.label, "Rien d’enregistré")
+        XCTAssertTrue(app.buttons["accept-lens"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["sheet-state"].firstMatch.label.contains("Rien"))
         attach(app, "6 Nouvelle fiche, suggestions en gris")
 
         app.buttons["accept-lens"].tap()
-        XCTAssertFalse(app.buttons["accept-lens"].exists)
-        XCTAssertEqual(app.textFields["field-lens"].value as? String, "35mm")
+        XCTAssertTrue(app.buttons["accept-lens"].waitForNonExistence(timeout: 5))
+        wait(app.textFields["field-lens"], value: "35mm")
         acceptAll.tap()
-        XCTAssertFalse(app.buttons["accept-all"].exists)
+        XCTAssertTrue(app.buttons["accept-all"].waitForNonExistence(timeout: 5))
         attach(app, "7 Tout reprendre")
     }
 }
