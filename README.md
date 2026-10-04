@@ -10,7 +10,7 @@ Le projet inclut une compilation GitHub Actions sur runner macOS standard pour d
 
 La fondation de Phase 1 est écrite : projet Xcode, stockage SwiftData, parcours production → journée → caméra → roll → prise, formulaires de création, exemple LES OMBRES et tests XCTest. SmartFill initial et Circle sont anticipés pour vérifier le modèle de prise.
 
-**Compilation et tests iOS non exécutés** : le développement initial a lieu sous Windows, sans Xcode ni SDK Apple. Le projet n'est pas encore validé sur simulateur ou iPhone. Le contrôle structurel des fichiers ne remplace pas cette validation.
+**Compilation et huit tests XCTest validés sur Mac distant** via GitHub Actions le 3 octobre 2026 (Xcode 16.4, simulateur iOS 26.2). La compilation Release ARM64 et la préparation de l'IPA pour appareil physique réussissent également. Le [run GitHub Actions n° 3](https://github.com/moiteauximagery-netizen/CameraLog/actions/runs/37148475543) contient le fichier à télécharger. Une copie se trouve sur le PC dans `build/iphone/CameraLog.ipa`. L'installation, la présentation et la saisie sur un véritable iPhone restent à vérifier ; ces tests ne constituent pas une validation plateau.
 
 ## Ouvrir sur Mac
 

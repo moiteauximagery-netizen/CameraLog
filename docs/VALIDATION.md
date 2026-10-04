@@ -4,7 +4,13 @@
 
 Le script `scripts/check_project.py` vérifie les références du projet Xcode, les cibles, l'appartenance des sources aux phases de compilation et le schéma partagé. Il ne compile aucun Swift et n'exécute pas SwiftData.
 
-## Tests XCTest fournis — à exécuter sur Mac
+## Tests XCTest — huit réussites sur Mac distant
+
+Le 3 octobre 2026, [l'exécution GitHub Actions n° 2](https://github.com/moiteauximagery-netizen/CameraLog/actions/runs/37148084250) a validé les huit tests avec zéro échec, sous Xcode 16.4 et simulateur iOS 26.2, puis la compilation Release pour iPhone. Cette exécution a ensuite échoué dans l'outil de préparation de l'IPA ; l'ordre des arguments de `lipo` a été corrigé séparément.
+
+La [troisième exécution](https://github.com/moiteauximagery-netizen/CameraLog/actions/runs/37148475543) est entièrement réussie : huit tests, compilation pour iPhone ARM64 et création de `CameraLog.ipa`. Une copie locale de l'IPA non signé est dans `build/iphone/CameraLog.ipa` (SHA-256 `2156185CAAF1B4FE20BA9423823C118E53E719E67C7F67528412283EB5066E75`). L'installation et le lancement sur iPhone n'ont pas encore été vérifiés.
+
+La première exécution avait révélé deux plantages à l'insertion : les tests libéraient le ModelContainer alors que le repository utilisait encore son contexte. Le repository conserve désormais le container pendant toute sa durée de vie ; les mêmes tests passent sans être désactivés ou affaiblis.
 
 1. Création complète de la hiérarchie et relations uniques.
 2. SmartFill : paramètres hérités, statuts/commentaires/média/timecode réinitialisés.
@@ -34,4 +40,4 @@ Les tests d'export attendront l'implémentation des exports en Phase 3. Les scé
 
 ## Critère de livraison
 
-Pas de déclaration « compilable », « tests réussis », « prêt plateau » ou « Phase 1 validée » tant que les résultats Xcode et la recette sur appareil ne sont pas obtenus. Conserver le fichier `.xcresult` de la première exécution.
+Compilation et tests unitaires sont validés. Ne pas déclarer « prêt plateau » ou « Phase 1 validée sur appareil » avant la recette manuelle sur iPhone. Les résultats `.xcresult` sont disponibles dans les artefacts de diagnostic GitHub Actions pendant leur durée de conservation.
