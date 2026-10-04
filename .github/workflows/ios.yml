@@ -117,7 +117,7 @@ jobs:
         run: |
           if [ -d build/CameraLogTests.xcresult ]; then
             xcrun xcresulttool get test-results summary \
-  \n            --path build/CameraLogTests.xcresult > build/test-summary.json
+              --path build/CameraLogTests.xcresult > build/test-summary.json
             cat build/test-summary.json
             python3 scripts/report_tests.py build/CameraLogTests.xcresult || true
           fi
