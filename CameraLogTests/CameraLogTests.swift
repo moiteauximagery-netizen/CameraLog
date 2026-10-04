@@ -922,7 +922,7 @@ import SwiftData
         let production = try repo.addProduction(name: "P")
         let day = try repo.addDay(to: production, number: 1, date: Date())
         let a = try XCTUnwrap(try repo.addNextCamera(to: day).camera)
-        let report = try XCTUnwrap(day.reports.first)
+        let report = try XCTUnwrap(day.reports.first { $0.camera?.id == a.id })
         let b = try XCTUnwrap(try repo.addNextCamera(to: day).camera)
         XCTAssertEqual(a.colorHue, CameraColor.palette[0], "A takes the first color")
         XCTAssertEqual(b.colorHue, CameraColor.palette[1])
