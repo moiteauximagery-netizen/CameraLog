@@ -9,6 +9,8 @@ private enum ReportSearch: String, CaseIterable, Identifiable {
 struct ReportView: View {
     let report: CameraReport
     let repository: CameraLogRepository
+    /// The rolls page of a camera takes the camera color, like its sheets.
+    private var accent: Color { Color.cameraAccent(report.camera?.colorHue) }
     @State private var query = ""
     @State private var searchScope: ReportSearch = .all
     @State private var error: String?
@@ -81,7 +83,7 @@ struct ReportView: View {
         } message: { sheet in
             Text(deletionMessage(sheet))
         }
-        .sheet(item: $editingRoll) { roll in RollEditor(roll: roll, repository: repository) }
+        .sheet(item: $editingRoll) { roll in RollEditor(roll: roll, repository: repository).tint(accent) }
         .toolbar {
             Button("Exporter", systemImage: "square.and.arrow.up") { exporting = true }
                 .accessibilityIdentifier("export-report")
@@ -89,8 +91,11 @@ struct ReportView: View {
         .sheet(isPresented: $exporting) {
             if let day = report.day {
                 ExportView(day: day, repository: repository, camera: report.camera)
+                    .tint(accent)
             }
         }
+        .environment(\.sheetAccent, accent)
+        .tint(accent)
         .logError($error)
     }
 
@@ -136,6 +141,7 @@ struct ReportView: View {
 }
 
 private struct SheetRow: View {
+    @Environment(\.sheetAccent) private var accent
     let sheet: ShotSheet
     let clipNumbers: [UUID: Int]
 
@@ -156,8 +162,8 @@ private struct SheetRow: View {
                             .font(.caption.bold()).monospacedDigit()
                             .frame(width: 26, height: 26)
                             .foregroundStyle(take.isCircle ? Color.black : Color.primary)
-                            .background(take.isCircle ? Color.orange : Color.clear, in: Circle())
-                            .overlay(Circle().strokeBorder(Color.orange, lineWidth: 1))
+                            .background(take.isCircle ? accent : Color.clear, in: Circle())
+                            .overlay(Circle().strokeBorder(accent, lineWidth: 1))
                     }
                     if takes.count > 7 { Text("+\(takes.count - 7)").font(.caption) }
                 }

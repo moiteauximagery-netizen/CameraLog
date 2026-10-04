@@ -23,7 +23,6 @@ struct SheetView: View {
     @State private var error: String?
     @State private var feedback = 0
     @State private var picker: SheetField?
-    @State private var apertureFraction = ""
     @State private var labelTakeID: UUID?
     @State private var labelDraft = ""
     @State private var saveTask: Task<Void, Never>?
@@ -610,11 +609,7 @@ struct SheetView: View {
     }
 
     private func pickerButton(_ field: SheetField) -> some View {
-        Button {
-            focus = nil
-            if field == .tStop { apertureFraction = Aperture.parse(draft.value(.tStop))?.fraction ?? "" }
-            picker = field
-        } label: {
+        Button { focus = nil; picker = field } label: {
             Image(systemName: "chevron.down.circle.fill")
                 .font(.title3)
                 .frame(minWidth: 36, minHeight: 28)
@@ -657,18 +652,24 @@ struct SheetView: View {
         case .tStop:
             let current = Aperture.parse(draft.value(.tStop))
             VStack(alignment: .leading, spacing: 10) {
-                Text("1. Fraction").font(.caption.bold()).foregroundStyle(accent)
-                ValueGrid(values: Aperture.fractions.map(Aperture.label), columns: 4, idPrefix: "fraction",
-                          selected: { $0 == Aperture.label(apertureFraction) }) { label in
-                    apertureFraction = Aperture.fraction(forLabel: label)
-                }
-                Text("2. Diaph").font(.caption.bold()).foregroundStyle(accent)
+                Text("Diaph").font(.caption.bold()).foregroundStyle(accent)
+                // A full stop is written at once; the menu stays open for a fraction.
                 ValueGrid(values: Aperture.fullStops, columns: 5, idPrefix: "stop",
                           selected: { $0 == current?.stop }) { stop in
-                    draft[.tStop] = Aperture.value(stop: stop, fraction: apertureFraction)
-                    apertureFraction = ""
+                    draft[.tStop] = stop
+                }
+                Text("Fraction").font(.caption.bold()).foregroundStyle(accent)
+                ValueGrid(values: Aperture.fractions.map(Aperture.label), columns: 4, idPrefix: "fraction",
+                          selected: { current != nil && $0 == Aperture.label(current?.fraction ?? "") }) { label in
+                    if let stop = current?.stop {
+                        draft[.tStop] = Aperture.value(stop: stop, fraction: Aperture.fraction(forLabel: label))
+                    }
                     picker = nil
                 }
+                .disabled(current == nil)
+                .opacity(current == nil ? 0.4 : 1)
+                Text("Toucher à côté du menu garde le diaph plein.")
+                    .font(.caption2).foregroundStyle(.secondary)
             }
         case .filters:
             VStack(alignment: .leading, spacing: 8) {

@@ -131,19 +131,16 @@ final class CameraLogUITests: XCTestCase {
         XCTAssertTrue(app.buttons["accept-lens"].waitForNonExistence(timeout: 5))
         wait(app.textFields["field-lens"], value: "35mm")
 
-        // Diaph in two steps: a full stop in one tap, a third with the fraction first.
+        // Diaph first (written at once), then an optional fraction that closes the menu.
         app.buttons["picker-tStop"].tap()
-        let stop = app.buttons["stop-4"]
+        let stop = app.buttons["stop-2.8"]
         XCTAssertTrue(stop.waitForExistence(timeout: 5))
         stop.tap()
-        wait(app.textFields["field-tStop"], value: "4")
-        app.buttons["picker-tStop"].tap()
-        let third = app.buttons["fraction-+⅓"]
-        XCTAssertTrue(third.waitForExistence(timeout: 5))
-        third.tap()
+        wait(app.textFields["field-tStop"], value: "2.8")
         attach(app, "8 Menu diaph")
-        app.buttons["stop-2.8"].tap()
+        app.buttons["fraction-+⅓"].tap()
         wait(app.textFields["field-tStop"], value: "2.8 ⅓")
+        XCTAssertTrue(app.buttons["stop-2.8"].waitForNonExistence(timeout: 5), "The fraction closes the menu")
 
         // Filters: family then grade, combined; another ND grade replaces the first.
         app.buttons["picker-filters"].tap()
