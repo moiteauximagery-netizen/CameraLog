@@ -131,13 +131,22 @@ enum CameraLogStore {
     func updateProduction(_ production: Production, name: String, client: String, director: String,
                           cinematographer: String, start: Date, end: Date?, projectNumber: String,
                           notes: String, lensKit: [String], filterKit: [FilterFamily],
-                          catalog: ProjectCatalog? = nil) throws {
+                          catalog: ProjectCatalog? = nil, lensSeries: [LensSeries]? = nil) throws {
         let name = try required(name, "Le nom")
         if let end, end < start { throw LogError.invalid("La fin doit suivre le début.") }
         production.name = name; production.client = client; production.director = director
         production.cinematographer = cinematographer; production.startDate = start; production.endDate = end
         production.projectNumber = projectNumber; production.notes = notes
-        production.lensKit = lensKit
+        if let lensSeries {
+            production.lensSeries = lensSeries.compactMap { series in
+                let focals = series.focals.filter { !$0.isEmpty }
+                return focals.isEmpty ? nil : LensSeries(name: series.name.trimmingCharacters(in: .whitespacesAndNewlines),
+                                                         focals: focals)
+            }
+        } else {
+            production.lensKit = lensKit
+            production.lensSeriesData = nil
+        }
         production.filterKit = filterKit.compactMap { family in
             let name = family.name.trimmingCharacters(in: .whitespacesAndNewlines)
             return name.isEmpty ? nil : FilterFamily(name: name, grades: family.grades)
@@ -157,15 +166,25 @@ enum CameraLogStore {
         try commit()
     }
 
+    /// `colorHue`: nil keeps the color, .some(nil) sets gray. `nativeISO`: nil keeps it, "" clears it.
     func updateCamera(_ camera: Camera, name: String, manufacturer: String, model: String,
-                      serialNumber: String) throws {
+                      serialNumber: String, colorHue: Double?? = nil, nativeISO: String? = nil) throws {
         let name = try required(name, "Le nom caméra")
         let others = (camera.production?.cameras ?? []).filter { $0.id != camera.id }
         guard !others.contains(where: { same($0.name, name) }) else {
             throw LogError.invalid("Cette caméra existe déjà dans la production.")
         }
+        var iso: String?
+        if let nativeISO {
+            let text = nativeISO.trimmingCharacters(in: .whitespaces)
+            if text.isEmpty { iso = "" } else {
+                iso = try SheetValidation.normalizedSettings([SheetField.iso.rawValue: text])[SheetField.iso.rawValue]
+            }
+        }
         camera.name = name; camera.manufacturer = manufacturer; camera.model = model
         camera.serialNumber = serialNumber
+        if let colorHue { camera.colorHue = colorHue }
+        if let iso { camera.nativeISO = iso.isEmpty ? nil : iso }
         try commit()
     }
 
@@ -269,11 +288,17 @@ enum CameraLogStore {
     }
 
     private func suggest(into draft: inout SheetDraft, report: CameraReport, excluding sheet: ShotSheet?) {
-        guard let previous = previousSheet(in: report, excluding: sheet) else { return }
-        let rollName = previous.roll?.name ?? ""
-        draft.suggestions = SmartFill.suggestions(scene: previous.scene, shot: previous.shot, roll: rollName,
-                                                  magazine: previous.roll?.card ?? "", settings: previous.settings)
-        draft.suggestionSource = "la fiche \(previous.title) · \(rollName)"
+        if let previous = previousSheet(in: report, excluding: sheet) {
+            let rollName = previous.roll?.name ?? ""
+            draft.suggestions = SmartFill.suggestions(scene: previous.scene, shot: previous.shot, roll: rollName,
+                                                      magazine: previous.roll?.card ?? "", settings: previous.settings)
+            draft.suggestionSource = "la fiche \(previous.title) · \(rollName)"
+        }
+        // The native ISO of the camera is offered when nothing else is.
+        if draft.suggestion(.iso) == nil, let iso = report.camera?.nativeISO, !iso.isEmpty {
+            draft.suggestions[.iso] = iso
+            if draft.suggestionSource.isEmpty { draft.suggestionSource = "l’ISO natif de CAM \(report.camera?.name ?? "")" }
+        }
     }
 
     /// Clip numbers that saving `rollName` on this sheet would change. Empty when nothing moves.

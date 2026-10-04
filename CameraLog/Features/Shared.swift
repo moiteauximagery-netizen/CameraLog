@@ -23,3 +23,28 @@ struct SaveToolbar: ToolbarContent {
         ToolbarItem(placement: .confirmationAction) { Button("Enregistrer", action: save).bold() }
     }
 }
+
+extension Color {
+    /// Identification color of a camera; gray when none is set.
+    static func camera(_ hue: Double?) -> Color {
+        guard let hue else { return .gray }
+        return Color(hue: hue, saturation: 0.72, brightness: 0.95)
+    }
+}
+
+/// « A » on the camera color, used wherever a camera is named.
+struct CameraBadge: View {
+    let name: String
+    let hue: Double?
+    var size: CGFloat = 30
+    var body: some View {
+        Text(name)
+            .font(.system(size: size * 0.5, weight: .heavy)).monospacedDigit()
+            .lineLimit(1).minimumScaleFactor(0.5)
+            .foregroundStyle(Color.black)
+            .frame(minWidth: size, minHeight: size)
+            .padding(.horizontal, name.count > 1 ? 6 : 0)
+            .background(Color.camera(hue), in: RoundedRectangle(cornerRadius: size * 0.28))
+            .accessibilityLabel("Caméra \(name)")
+    }
+}

@@ -38,7 +38,7 @@ struct SheetView: View {
     }
 
     private var isDirty: Bool { draft.savedContent != saved.savedContent }
-    private var lensKit: [String] { report.day?.production?.lensKit ?? [] }
+    private var lensSeries: [LensSeries] { report.day?.production?.lensSeries ?? [] }
     private var filterKit: [FilterFamily] { report.day?.production?.filterKit ?? FilterFamily.defaultKit }
     private var catalog: ProjectCatalog { report.day?.production?.catalog ?? ProjectCatalog() }
     private var vfxShown: Bool { !catalog.isHidden(ProjectCatalog.vfxBlock) }
@@ -162,7 +162,8 @@ struct SheetView: View {
 
     private var statusHeader: some View {
         HStack(spacing: 6) {
-            Text("DAY \(report.day?.number ?? 0) · CAM \(report.camera?.name ?? "—")")
+            CameraBadge(name: report.camera?.name ?? "—", hue: report.camera?.colorHue, size: 22)
+            Text("DAY \(report.day?.number ?? 0)")
             Spacer()
             Label(stateText, systemImage: saveIssue != nil ? "exclamationmark.circle.fill"
                   : (isDirty ? "pencil.circle.fill" : "checkmark.circle"))
@@ -592,7 +593,7 @@ struct SheetView: View {
 
     private func hasPicker(_ field: SheetField) -> Bool {
         switch field {
-        case .lens: return !lensKit.isEmpty
+        case .lens: return !lensSeries.isEmpty
         case .tStop: return true
         case .filters: return !filterKit.isEmpty
         case .lut, .aspectRatio, .format, .resolution: return !catalog.list(field).isEmpty
@@ -623,12 +624,22 @@ struct SheetView: View {
         switch field {
         case .lens:
             ScrollView {
-                ValueGrid(values: lensKit, columns: 3, selected: { $0 == draft.value(.lens) }) { value in
-                    draft[.lens] = value
-                    picker = nil
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(lensSeries) { series in
+                        VStack(alignment: .leading, spacing: 4) {
+                            if !series.name.isEmpty {
+                                Text(series.name).font(.caption.bold()).foregroundStyle(.orange)
+                            }
+                            ValueGrid(values: series.focals, columns: 4, idPrefix: series.name.isEmpty ? "lens" : series.name,
+                                      selected: { draft.value(.lens) == LensSeries.value(series: series.name, focal: $0) }) { focal in
+                                draft[.lens] = LensSeries.value(series: series.name, focal: focal)
+                                picker = nil
+                            }
+                        }
+                    }
                 }
             }
-            .frame(maxHeight: 360)
+            .frame(maxHeight: 400)
         case .tStop:
             ScrollView {
                 VStack(spacing: 6) {

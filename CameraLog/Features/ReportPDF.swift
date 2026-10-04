@@ -128,8 +128,13 @@ enum ReportPDF {
                 let body = [camera?.manufacturer ?? "", camera?.model ?? "",
                             (camera?.serialNumber ?? "").isEmpty ? "" : "S/N \(camera?.serialNumber ?? "")"]
                     .filter { !$0.isEmpty }.joined(separator: " ")
+                if let hue = camera?.colorHue {
+                    UIColor(hue: hue, saturation: 0.72, brightness: 0.95, alpha: 1).setFill()
+                    UIBezierPath(roundedRect: CGRect(x: margin, y: y + 1, width: 12, height: 14), cornerRadius: 3).fill()
+                }
                 draw("CAM \(camera?.name ?? "—")" + (body.isEmpty ? "" : "  ·  \(body)"),
-                     at: CGRect(x: margin, y: y, width: width, height: 16), size: 13, weight: .bold)
+                     at: CGRect(x: margin + (camera?.colorHue == nil ? 0 : 18), y: y, width: width, height: 16),
+                     size: 13, weight: .bold)
                 y += 20
 
                 for roll in rolls {

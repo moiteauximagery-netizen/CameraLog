@@ -223,6 +223,17 @@ final class CameraLogUITests: XCTestCase {
         XCTAssertTrue(app.buttons["camera-C"].waitForExistence(timeout: 5))
         attach(app, "10 Caméras A B C")
 
+        // Camera B: native ISO set from its swipe action, shown at once on the day.
+        app.buttons["camera-B"].swipeLeft()
+        app.buttons["Modifier"].firstMatch.tap()
+        let iso = app.textFields["native-iso"]
+        XCTAssertTrue(iso.waitForExistence(timeout: 5))
+        attach(app, "10b Couleur et ISO natif")
+        iso.tap()
+        iso.typeText("1280")
+        app.navigationBars["CAM B"].buttons["Enregistrer"].tap()
+        wait(app.buttons["camera-B"], labelContains: "ISO 1280")
+
         app.buttons["edit-day"].tap()
         let location = app.textFields["day-location"]
         XCTAssertTrue(location.waitForExistence(timeout: 5))

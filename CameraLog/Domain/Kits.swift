@@ -181,3 +181,27 @@ enum RollNaming {
         return prefix + String(repeating: "0", count: 3 - rest.count) + rest
     }
 }
+
+/// A lens series of the production: short name and focal lengths. « S4 » + « 50 mm » → « S4 50mm ».
+struct LensSeries: Codable, Equatable, Hashable, Identifiable {
+    var name: String
+    var focals: [String]
+    var id: String { name + "|" + focals.joined(separator: ",") }
+
+    /// Text written in the OBJECTIF box. A series without a name gives the focal only.
+    static func value(series: String, focal: String) -> String {
+        let focal = focal.replacingOccurrences(of: " mm", with: "mm")
+        let name = series.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? focal : "\(name) \(focal)"
+    }
+}
+
+/// Camera colors: a fixed palette of hues (nil means gray). New cameras follow their letter.
+enum CameraColor {
+    static let palette: [Double] = [0.0, 0.6, 0.33, 0.14, 0.78, 0.07, 0.5, 0.9]
+    static func defaultHue(for name: String) -> Double? {
+        guard let scalar = name.uppercased().unicodeScalars.first, name.count == 1,
+              scalar.value >= 65, scalar.value <= 90 else { return nil }
+        return palette[Int(scalar.value - 65) % palette.count]
+    }
+}

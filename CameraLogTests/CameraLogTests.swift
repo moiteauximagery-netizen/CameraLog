@@ -917,6 +917,45 @@ import SwiftData
         XCTAssertFalse(catalog.isHidden("aspectRatio"))
     }
 
+    func testCameraColorNativeISOAndLensSeries() throws {
+        let (_, repo) = try setupStore()
+        let production = try repo.addProduction(name: "P")
+        let day = try repo.addDay(to: production, number: 1, date: Date())
+        let a = try XCTUnwrap(try repo.addNextCamera(to: day).camera)
+        let report = try XCTUnwrap(day.reports.first)
+        let b = try XCTUnwrap(try repo.addNextCamera(to: day).camera)
+        XCTAssertEqual(a.colorHue, CameraColor.palette[0], "A takes the first color")
+        XCTAssertEqual(b.colorHue, CameraColor.palette[1])
+        XCTAssertNil(CameraColor.defaultHue(for: "Drone"))
+
+        try repo.updateCamera(a, name: "A", manufacturer: "", model: "", serialNumber: "", colorHue: .some(nil), nativeISO: "1280")
+        XCTAssertNil(a.colorHue, "Gray")
+        XCTAssertEqual(a.nativeISO, "1280")
+        XCTAssertThrowsError(try repo.updateCamera(a, name: "A", manufacturer: "", model: "", serialNumber: "", nativeISO: "abc"))
+        try repo.updateCamera(a, name: "A", manufacturer: "", model: "", serialNumber: "")
+        XCTAssertEqual(a.nativeISO, "1280", "Nil keeps the native ISO")
+        XCTAssertNil(a.colorHue, "Nil keeps the color")
+
+        let first = repo.newSheetDraft(for: report)
+        XCTAssertEqual(first.suggestion(.iso), "1280", "Native ISO offered on the first sheet")
+        XCTAssertTrue(first.values.isEmpty)
+        try repo.saveSheet(sheetDraft("1", "A", roll: "1", [.iso: "800"]), sheet: nil, in: report)
+        XCTAssertEqual(repo.newSheetDraft(for: report).suggestion(.iso), "800", "The previous sheet comes first")
+        try repo.updateCamera(a, name: "A", manufacturer: "", model: "", serialNumber: "", nativeISO: "")
+        XCTAssertNil(a.nativeISO)
+
+        XCTAssertEqual(LensSeries.value(series: "S4", focal: "50 mm"), "S4 50mm")
+        XCTAssertEqual(LensSeries.value(series: " ", focal: "50 mm"), "50mm")
+        try repo.updateProduction(production, name: "P", client: "", director: "", cinematographer: "",
+            start: production.startDate, end: nil, projectNumber: "", notes: "", lensKit: ["18 mm"], filterKit: [])
+        XCTAssertEqual(production.lensSeries, [LensSeries(name: "", focals: ["18 mm"])], "A schema 3 kit is one unnamed series")
+        try repo.updateProduction(production, name: "P", client: "", director: "", cinematographer: "",
+            start: production.startDate, end: nil, projectNumber: "", notes: "", lensKit: [], filterKit: [],
+            lensSeries: [LensSeries(name: " S4 ", focals: ["18 mm", "50 mm"]), LensSeries(name: "Vide", focals: [])])
+        XCTAssertEqual(production.lensSeries, [LensSeries(name: "S4", focals: ["18 mm", "50 mm"])], "Empty series are dropped")
+        XCTAssertEqual(production.lensKit, ["S4 18mm", "S4 50mm"])
+    }
+
     func testSampleData() throws {
         let (container, repo) = try setupStore()
         try SampleData.load(into: repo)

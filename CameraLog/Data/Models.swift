@@ -20,16 +20,29 @@ import SwiftData
     // Schema 3: equipment kits. Optional so older stores migrate without inventing values.
     var lensKitData: Data?
     var filterKitData: Data?
-    // Schema 4: lists offered on the sheet and the boxes the sheet shows.
+    // Schema 4: lists offered on the sheet, the boxes the sheet shows, and lens series.
     var catalogData: Data?
+    var lensSeriesData: Data?
     init(name: String) {
         id = UUID(); self.name = name; startDate = Date()
         createdAt = Date(); updatedAt = Date(); defaults = CaptureSettings()
     }
-    /// Focal lengths of the production. Empty: the lens field has no menu.
+    /// Focal lengths of schema 3 (one unnamed series). Kept readable for older data.
     var lensKit: [String] {
         get { KitCoding.decode([String].self, from: lensKitData) ?? [] }
         set { lensKitData = KitCoding.encode(newValue) }
+    }
+    /// Lens series of the production. A schema 3 lens kit appears as one series without a name.
+    /// Empty: the lens field has no menu.
+    var lensSeries: [LensSeries] {
+        get {
+            if let series = KitCoding.decode([LensSeries].self, from: lensSeriesData) { return series }
+            return lensKit.isEmpty ? [] : [LensSeries(name: "", focals: lensKit)]
+        }
+        set {
+            lensSeriesData = KitCoding.encode(newValue)
+            lensKit = newValue.flatMap { series in series.focals.map { LensSeries.value(series: series.name, focal: $0) } }
+        }
     }
     /// LUT, ratio, format and resolution lists, and the boxes hidden on sheets.
     var catalog: ProjectCatalog {
@@ -71,8 +84,12 @@ import SwiftData
     var defaults: CaptureSettings
     var production: Production?
     @Relationship(inverse: \CameraReport.camera) var reports: [CameraReport] = []
+    // Schema 4: identification color (nil: gray) and native ISO offered on sheets.
+    var colorHue: Double?
+    var nativeISO: String?
     init(name: String, production: Production) {
         id = UUID(); self.name = name; self.production = production; defaults = production.defaults
+        colorHue = CameraColor.defaultHue(for: name)
     }
 }
 

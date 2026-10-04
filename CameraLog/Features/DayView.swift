@@ -28,10 +28,16 @@ struct DayView: View {
                     NavigationLink {
                         ReportView(report: report, repository: repository)
                     } label: {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("CAM \(report.camera?.name ?? "—")").font(.title2.bold())
-                            Text("\(report.rolls.flatMap(\.currentSheets).count) fiches · \(report.rolls.flatMap(\.takes).count) prises")
-                                .foregroundStyle(.secondary)
+                        HStack(spacing: 12) {
+                            CameraBadge(name: report.camera?.name ?? "—", hue: report.camera?.colorHue, size: 40)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("CAM \(report.camera?.name ?? "—")").font(.title2.bold())
+                                Text([report.camera?.model ?? "", (report.camera?.nativeISO).map { "ISO \($0)" } ?? ""]
+                                        .filter { !$0.isEmpty }.joined(separator: " · "))
+                                    .font(.caption).foregroundStyle(.secondary)
+                                Text("\(report.rolls.flatMap(\.currentSheets).count) fiches · \(report.rolls.flatMap(\.takes).count) prises")
+                                    .foregroundStyle(.secondary)
+                            }
                         }.padding(.vertical, 8)
                     }
                     .accessibilityIdentifier("camera-\(report.camera?.name ?? "")")
@@ -91,6 +97,8 @@ struct CameraEditor: View {
     @State private var manufacturer: String
     @State private var model: String
     @State private var serial: String
+    @State private var hue: Double?
+    @State private var nativeISO: String
     @State private var error: String?
     init(camera: Camera, repository: CameraLogRepository) {
         self.camera = camera; self.repository = repository
@@ -98,26 +106,70 @@ struct CameraEditor: View {
         _manufacturer = State(initialValue: camera.manufacturer)
         _model = State(initialValue: camera.model)
         _serial = State(initialValue: camera.serialNumber)
+        _hue = State(initialValue: camera.colorHue)
+        _nativeISO = State(initialValue: camera.nativeISO ?? "")
     }
     var body: some View {
         NavigationStack {
             Form {
-                TextField("Nom : A, B, Drone…", text: $name)
-                    .textInputAutocapitalization(.characters)
-                TextField("Fabricant", text: $manufacturer)
-                TextField("Modèle", text: $model)
-                TextField("Numéro de série", text: $serial)
+                Section {
+                    HStack(spacing: 12) {
+                        CameraBadge(name: name.isEmpty ? "?" : name, hue: hue, size: 44)
+                        TextField("Nom : A, B, Drone…", text: $name)
+                            .textInputAutocapitalization(.characters)
+                            .font(.title2.bold())
+                    }
+                }
+                Section("Couleur") {
+                    HStack(spacing: 10) {
+                        ForEach(CameraColor.palette, id: \.self) { value in
+                            colorButton(value, label: "Couleur \(CameraColor.palette.firstIndex(of: value).map { $0 + 1 } ?? 0)")
+                        }
+                        colorButton(nil, label: "Gris")
+                    }
+                    .padding(.vertical, 4)
+                }
+                Section {
+                    TextField("800, 1280…", text: $nativeISO)
+                        .keyboardType(.numberPad)
+                        .accessibilityIdentifier("native-iso")
+                } header: {
+                    Text("ISO natif")
+                } footer: {
+                    Text("Proposé en gris dans la case ISO quand aucune fiche précédente n’en propose.")
+                }
+                Section("Boîtier") {
+                    TextField("Fabricant", text: $manufacturer)
+                    TextField("Modèle", text: $model)
+                    TextField("Numéro de série", text: $serial)
+                }
             }
             .navigationTitle("CAM \(camera.name)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { SaveToolbar(save: {
                 do {
                     try repository.updateCamera(camera, name: name, manufacturer: manufacturer,
-                                                model: model, serialNumber: serial)
+                                                model: model, serialNumber: serial, colorHue: .some(hue),
+                                                nativeISO: nativeISO)
                     dismiss()
                 } catch { self.error = error.localizedDescription }
             }, cancel: { dismiss() }) }
             .logError($error)
         }
+    }
+
+    private func colorButton(_ value: Double?, label: String) -> some View {
+        let selected = hue == value
+        return Button { hue = value } label: {
+            Circle()
+                .fill(Color.camera(value))
+                .frame(width: 28, height: 28)
+                .overlay { Circle().strokeBorder(Color.primary, lineWidth: selected ? 3 : 0) }
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

@@ -98,8 +98,7 @@ struct ProductionEditor: View {
     @State private var start: Date
     @State private var hasEnd: Bool
     @State private var end: Date
-    @State private var lenses: [String]
-    @State private var lensEntry = ""
+    @State private var series: [EditableLensSeries]
     @State private var filters: [EditableFilterFamily]
     @State private var catalog: ProjectCatalog
     @State private var listEntries: [SheetField: String] = [:]
@@ -117,7 +116,7 @@ struct ProductionEditor: View {
         _start = State(initialValue: production?.startDate ?? Date())
         _hasEnd = State(initialValue: production?.endDate != nil)
         _end = State(initialValue: production?.endDate ?? Date())
-        _lenses = State(initialValue: production?.lensKit ?? [])
+        _series = State(initialValue: (production?.lensSeries ?? []).map(EditableLensSeries.init))
         _filters = State(initialValue: (production?.filterKit ?? FilterFamily.defaultKit).map(EditableFilterFamily.init))
         _catalog = State(initialValue: production?.catalog ?? ProjectCatalog())
     }
@@ -156,21 +155,27 @@ struct ProductionEditor: View {
 
     private var lensSection: some View {
         Section {
-            ForEach(lenses, id: \.self) { lens in Text(lens) }
-                .onDelete { lenses.remove(atOffsets: $0) }
-            HStack {
-                TextField("18, 25, 32, 50, 75…", text: $lensEntry)
-                    .keyboardType(.numbersAndPunctuation)
-                    .autocorrectionDisabled()
-                    .onSubmit(addLenses)
-                    .accessibilityIdentifier("lens-entry")
-                Button("Ajouter", action: addLenses)
-                    .disabled(lensEntry.trimmingCharacters(in: .whitespaces).isEmpty)
+            ForEach($series) { $item in
+                VStack(alignment: .leading, spacing: 6) {
+                    TextField("Série, par exemple S4", text: $item.name)
+                        .font(.headline)
+                        .autocorrectionDisabled()
+                    TextField("Focales : 18, 25, 32, 50, 75", text: $item.focals)
+                        .font(.subheadline)
+                        .keyboardType(.numbersAndPunctuation)
+                        .autocorrectionDisabled()
+                        .accessibilityIdentifier("lens-entry")
+                }
+                .padding(.vertical, 2)
+            }
+            .onDelete { series.remove(atOffsets: $0) }
+            Button("Ajouter une série d’objectifs", systemImage: "plus") {
+                series.append(EditableLensSeries(LensSeries(name: "", focals: [])))
             }
         } header: {
-            Text("Série d’objectifs")
+            Text("Séries d’objectifs")
         } footer: {
-            Text("Ces focales apparaissent dans le menu de la case OBJECTIF. Plusieurs valeurs séparées par des virgules. Sans série, la case reste en saisie libre.")
+            Text("La flèche de la case OBJECTIF affiche chaque série et ses focales ; la case reçoit « S4 50mm ». Sans série, la case reste en saisie libre. Balayer pour supprimer.")
         }
     }
 
@@ -265,13 +270,7 @@ struct ProductionEditor: View {
         Binding(get: { !catalog.isHidden(key) }, set: { catalog.setHidden(key, !$0) })
     }
 
-    private func addLenses() {
-        lenses = LensKit.merged(lenses, adding: LensKit.parse(lensEntry))
-        lensEntry = ""
-    }
-
     private func save() {
-        if !lensEntry.trimmingCharacters(in: .whitespaces).isEmpty { addLenses() }
         for field in SheetField.catalogLists where !(listEntries[field] ?? "").trimmingCharacters(in: .whitespaces).isEmpty {
             addListValues(field)
         }
@@ -284,9 +283,21 @@ struct ProductionEditor: View {
             }
             try repository.updateProduction(target, name: name, client: client, director: director,
                 cinematographer: cinematographer, start: start, end: hasEnd ? end : nil,
-                projectNumber: number, notes: notes, lensKit: lenses, filterKit: kit, catalog: catalog)
+                projectNumber: number, notes: notes, lensKit: [], filterKit: kit, catalog: catalog,
+                lensSeries: series.map { LensSeries(name: $0.name, focals: LensKit.merged([], adding: LensKit.parse($0.focals))) })
             dismiss()
         } catch { self.error = error.localizedDescription }
+    }
+}
+
+/// Lens series edited as text: focal lengths are typed comma-separated.
+struct EditableLensSeries: Identifiable {
+    let id = UUID()
+    var name: String
+    var focals: String
+    init(_ series: LensSeries) {
+        name = series.name
+        focals = series.focals.joined(separator: ", ")
     }
 }
 
@@ -371,8 +382,9 @@ struct ProductionDetailView: View {
                 LabeledContent("Image", value: production.cinematographer)
             }
             Section("Matériel") {
-                LabeledContent("Objectifs", value: production.lensKit.isEmpty ? "Aucune série"
-                               : production.lensKit.joined(separator: ", "))
+                LabeledContent("Objectifs", value: production.lensSeries.isEmpty ? "Aucune série"
+                               : production.lensSeries.map { $0.name.isEmpty ? "\($0.focals.count) focales" : $0.name }
+                                    .joined(separator: ", "))
                 LabeledContent("Filtres", value: production.filterKit.map(\.name).joined(separator: ", "))
             }
     }
