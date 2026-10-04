@@ -43,8 +43,8 @@ Le schéma est initial, sans migration historique. Avant toute évolution du mod
 
 ## Roadmap et critères de sortie
 
-1. **Foundation — compilée, huit tests XCTest réussis sur Mac distant.** Exécuter les scénarios manuels sur iPhone, vérifier l'installation, l'interface et la persistance après fermeture. Compléter l'édition des fiches avant usage de production.
-2. **Plateau.** Catalogue d'objectifs et filtres, commandes numériques spécialisées, presets caméra, réglages de champs visibles, recherche, édition des prises et annulation maîtrisée. Mesurer le temps de saisie à une main sur appareils réels ; viser 2–3 secondes pour une prise déjà configurée.
+1. **Foundation — compilée, neuf tests XCTest réussis sur Mac distant.** Exécuter les scénarios manuels sur iPhone, vérifier l'installation, l'interface et la persistance après fermeture. L'édition des prises et la liste compacte sont disponibles ; compléter l'édition des autres fiches avant usage de production.
+2. **Plateau.** Catalogue d'objectifs et filtres, commandes numériques spécialisées, presets caméra, réglages de champs visibles et annulation maîtrisée. Mesurer le temps de saisie à une main sur appareils réels ; viser 2–3 secondes pour une prise déjà configurée.
 3. **Report.** Exports PDF paginés, CSV échappé, JSON versionné et TXT, partage natif. Tests de contenu, encodage et pagination. Ajouter une restauration depuis une sauvegarde JSON validée.
 4. **Professional.** Timecode typé et drop-frame, durée, métadonnées optiques avec unités/provenance, templates et données VFX. Adaptateurs hardware uniquement pour protocoles réellement documentés et matériel disponible.
 5. **Sync.** Journal local durable, tombstones, transactions, versions par enregistrement, conflits explicites et reprise réseau. Puis seulement choix d'un service, comptes et collaboration.
