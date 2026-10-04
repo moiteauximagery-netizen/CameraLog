@@ -35,7 +35,7 @@ Le projet Xcode est fourni, sans dépendance à XcodeGen, CocoaPods ou un packag
 
 ## Parcours disponible
 
-- Créer une production avec client, réalisation, direction photo, dates, numéro et notes.
+- Créer une production avec client, réalisation, direction photo, dates, numéro et notes ; reprendre le rapport le plus récent depuis l'accueil.
 - Créer une journée avec date, lieu et unité.
 - Créer une caméra libre ou réutiliser une caméra de la production sur une autre journée.
 - Créer et sélectionner un roll, avec card et reel distincts ; parcourir tous les rolls d'une caméra dans une liste compacte.

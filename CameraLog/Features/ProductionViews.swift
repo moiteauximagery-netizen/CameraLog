@@ -7,9 +7,32 @@ struct ProductionListView: View {
     @State private var creating = false
     @State private var error: String?
     @State private var pendingDeletion: Production?
+    private var recentReport: CameraReport? {
+        productions.flatMap(\.days).flatMap(\.reports).max {
+            activityDate(for: $0) < activityDate(for: $1)
+        }
+    }
+    private func activityDate(for report: CameraReport) -> Date {
+        report.rolls.flatMap(\.takes).map(\.updatedAt).max() ?? report.createdAt
+    }
     var body: some View {
         NavigationStack {
             List {
+                if let report = recentReport {
+                    Section {
+                        NavigationLink {
+                            ReportView(report: report, repository: repository)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Label("Reprendre le rapport", systemImage: "arrow.uturn.forward.circle.fill")
+                                    .font(.headline)
+                                Text("\(report.day?.production?.name ?? "Production") · DAY \(report.day?.number ?? 0) · CAM \(report.camera?.name ?? "—")")
+                                    .font(.subheadline).foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 8)
+                        }
+                    }
+                }
                 Section {
                     ForEach(productions) { production in
                         NavigationLink {
