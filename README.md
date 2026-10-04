@@ -10,7 +10,7 @@ Le projet inclut une compilation GitHub Actions sur runner macOS standard pour d
 
 Le rapport caméra fonctionne par **fiches** : une fiche par scène/plan et par roll, sur laquelle on saisit l'identification, les réglages, les prises et le cerclage, sans écran séparé par plan. La liste du rapport regroupe automatiquement les fiches par roll.
 
-[Run GitHub Actions de référence du 4 octobre 2026](https://github.com/moiteauximagery-netizen/CameraLog/actions/runs/37199328155) : 18 tests sur 18 réussis (16 unitaires, 2 d'interface) sur simulateur iPhone SE, iOS 26.2, compilation Release ARM64 et `CameraLog.ipa` (artefact **CameraLog-iPhone-unsigned**, conservé sept jours). Détail dans [le protocole de validation](docs/VALIDATION.md). Les tests tournent sur simulateur ; **aucune de ces fonctions n'a encore été éprouvée sur un véritable iPhone ni en conditions de tournage.**
+[Run GitHub Actions de référence du 4 octobre 2026](https://github.com/moiteauximagery-netizen/CameraLog/actions/runs/37205433088) : 27 tests sur 27 réussis (24 unitaires, 3 d'interface) sur simulateur iPhone SE, iOS 26.2, compilation Release ARM64 et `CameraLog.ipa` (artefact **CameraLog-iPhone-unsigned**, conservé sept jours). Détail dans [le protocole de validation](docs/VALIDATION.md). Les tests tournent sur simulateur ; **aucune de ces fonctions n'a encore été éprouvée sur un véritable iPhone ni en conditions de tournage.**
 
 ## Ouvrir sur Mac
 

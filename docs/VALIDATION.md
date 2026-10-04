@@ -15,7 +15,7 @@ Chaque run du workflow `iOS - Tests et IPA pour iPhone` :
 3. Compile l'app en Release ARM64 pour iPhone et prépare `CameraLog.ipa`, non signé.
 4. Publie la liste des tests exécutés dans une annotation « Tests exécutés » du run, et les captures d'écran des tests d'interface dans l'artefact **CameraLog-diagnostics** (dossier `screenshots`).
 
-Run de référence : [37199328155](https://github.com/moiteauximagery-netizen/CameraLog/actions/runs/37199328155), 18 tests réussis sur 18, IPA produit. Un run précédent (37198308287) avait échoué sur `testNewSheetShowsSuggestionsWithoutFillingFields`, qui vérifiait l'interface sans attendre sa mise à jour ; le test attend désormais explicitement. Les tests ont tourné sur **iPhone SE (3e génération), iOS 26.2** (le plus petit écran disponible sur le runner). Aucun runtime iOS 17 n'est installé sur ce runner : la compatibilité iOS 17 repose sur la cible de déploiement et les API utilisées, pas sur une exécution.
+Run de référence : [37205433088](https://github.com/moiteauximagery-netizen/CameraLog/actions/runs/37205433088), build 17, 27 tests réussis sur 27, IPA produit. Un run précédent (37198308287) avait échoué sur `testNewSheetShowsSuggestionsWithoutFillingFields`, qui vérifiait l'interface sans attendre sa mise à jour ; le test attend désormais explicitement. Les tests ont tourné sur **iPhone SE (3e génération), iOS 26.2** (le plus petit écran disponible sur le runner). Aucun runtime iOS 17 n'est installé sur ce runner : la compatibilité iOS 17 repose sur la cible de déploiement et les API utilisées, pas sur une exécution.
 
 ## Tests unitaires (24)
 
