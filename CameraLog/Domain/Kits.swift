@@ -171,8 +171,11 @@ enum RollNaming {
 
     /// Stored form: upper case, and A1 / A12 completed to A001 / A012 on a lettered camera.
     static func normalized(_ name: String, camera: String?) -> String {
-        let upper = name.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        guard let prefix = prefix(forCamera: camera), upper.hasPrefix(prefix) else { return upper }
+        var upper = name.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard let prefix = prefix(forCamera: camera) else { return upper }
+        // A bare number typed without the letter still belongs to this camera: « 1 » → A001.
+        if !upper.isEmpty && upper.allSatisfy({ $0.isASCII && $0.isNumber }) { upper = prefix + upper }
+        guard upper.hasPrefix(prefix) else { return upper }
         let rest = upper.dropFirst(prefix.count)
         guard !rest.isEmpty, rest.count < 3, rest.allSatisfy({ $0.isASCII && $0.isNumber }) else { return upper }
         return prefix + String(repeating: "0", count: 3 - rest.count) + rest

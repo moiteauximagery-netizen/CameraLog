@@ -634,6 +634,8 @@ import SwiftData
         XCTAssertEqual(RollNaming.normalized("A12", camera: "A"), "A012")
         XCTAssertEqual(RollNaming.normalized("A0105", camera: "A"), "A0105")
         XCTAssertEqual(RollNaming.normalized("x7", camera: "Drone"), "X7")
+        XCTAssertEqual(RollNaming.normalized("7", camera: "B"), "B007")
+        XCTAssertEqual(RollNaming.normalized("7", camera: "Drone"), "7")
 
         let (_, repo) = try setupStore()
         let (_, report) = try report(repo)
