@@ -75,6 +75,28 @@ import SwiftData
         XCTAssertEqual(take.settings.iso, 800)
     }
 
+    func testEditingTakeKeepsIdentityAndRejectsDuplicateNumber() throws {
+        let (_, repo) = try setupStore()
+        let (_, _, roll) = try hierarchy(repo)
+        let first = try repo.addTake(to: roll, draft: TakeDraft())
+        var secondDraft = TakeDraft(); secondDraft.number = 2
+        let second = try repo.addTake(to: roll, draft: secondDraft)
+        let id = first.id
+        var edited = first.draft
+        edited.settings.lensName = "75mm"
+        edited.notes = "Bonne prise"
+        edited.statuses = [.circle]
+        try repo.updateTake(first, draft: edited)
+        XCTAssertEqual(first.id, id)
+        XCTAssertEqual(first.settings.lensName, "75mm")
+        XCTAssertEqual(first.notes, "Bonne prise")
+        XCTAssertTrue(first.isCircle)
+        XCTAssertEqual(first.revision, 2)
+        edited.number = second.number
+        XCTAssertThrowsError(try repo.updateTake(first, draft: edited))
+        XCTAssertEqual(first.number, 1)
+    }
+
     func testValidationDoesNotInsertInvalidRecords() throws {
         let (container, repo) = try setupStore()
         XCTAssertThrowsError(try repo.addProduction(name: "  "))

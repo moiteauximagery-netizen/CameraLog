@@ -100,6 +100,24 @@ enum CameraLogStore {
 
     @discardableResult func addTake(to roll: Roll, draft: TakeDraft) throws -> TakeEntry {
         var draft = draft
+        try validate(&draft, on: roll)
+        let take = TakeEntry(draft: draft, roll: roll)
+        context.insert(take); try commit(); return take
+    }
+
+    func updateTake(_ take: TakeEntry, draft: TakeDraft) throws {
+        guard let roll = take.roll else { throw LogError.invalid("Roll introuvable.") }
+        var draft = draft
+        try validate(&draft, on: roll, excluding: take.id)
+        take.scene = draft.scene; take.shot = draft.shot; take.number = draft.number
+        take.settings = draft.settings; take.statusValues = draft.statuses.map(\.rawValue)
+        take.clipName = draft.clipName; take.fileName = draft.fileName
+        take.tcIn = draft.tcIn; take.tcOut = draft.tcOut; take.notes = draft.notes
+        take.technicalNotes = draft.technicalNotes; take.cameraNotes = draft.cameraNotes
+        take.updatedAt = Date(); take.revision += 1; try commit()
+    }
+
+    private func validate(_ draft: inout TakeDraft, on roll: Roll, excluding id: UUID? = nil) throws {
         draft.scene = try required(draft.scene, "La scène")
         draft.shot = try required(draft.shot, "Le plan")
         guard draft.number > 0, draft.number < 100_000,
@@ -110,11 +128,10 @@ enum CameraLogStore {
             throw LogError.invalid("Vérifie le numéro de prise et les paramètres caméra.")
         }
         guard !roll.takes.contains(where: {
+            $0.id != id &&
             $0.scene.caseInsensitiveCompare(draft.scene) == .orderedSame &&
             $0.shot.caseInsensitiveCompare(draft.shot) == .orderedSame && $0.number == draft.number
         }) else { throw LogError.duplicateTake }
-        let take = TakeEntry(draft: draft, roll: roll)
-        context.insert(take); try commit(); return take
     }
 
     func toggleCircle(_ take: TakeEntry) throws {
