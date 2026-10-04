@@ -96,6 +96,7 @@ jobs:
             xcrun xcresulttool get test-results summary \
               --path build/CameraLogTests.xcresult > build/test-summary.json
             cat build/test-summary.json
+            python3 scripts/report_tests.py build/CameraLogTests.xcresult || true
           fi
 
       - name: Journaux et résultats des tests

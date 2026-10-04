@@ -386,6 +386,12 @@ private struct TakeChip: View {
     let circleMode: Bool
     let action: () -> Void
 
+    private var spokenLabel: String {
+        let code = clip.map(ClipCode.code) ?? "inconnu"
+        let label = take.labelText
+        return label.isEmpty ? "Prise \(take.number), clip \(code)" : "Prise \(take.number), clip \(code), libellé \(label)"
+    }
+
     var body: some View {
         Button(action: action) {
             VStack(spacing: 2) {
@@ -411,8 +417,7 @@ private struct TakeChip: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Prise \(take.number), clip \(clip.map(ClipCode.code) ?? "inconnu")"
-                            + (take.labelText.isEmpty ? "" : ", libellé \(take.labelText)"))
+        .accessibilityLabel(spokenLabel)
         .accessibilityValue(take.isCircle ? "cerclée" : "non cerclée")
         .accessibilityHint(circleMode ? "Mode cerclage : touchez pour cercler ou décercler."
                            : "Touchez pour modifier le libellé et les informations.")

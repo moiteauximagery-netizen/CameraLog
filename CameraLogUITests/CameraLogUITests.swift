@@ -23,7 +23,7 @@ final class CameraLogUITests: XCTestCase {
         add(attachment)
     }
 
-    private func wait(_ element: XCUIElement, value: String, file: StaticString = #filePath, line: UInt = #line) {
+    @MainActor private func wait(_ element: XCUIElement, value: String, file: StaticString = #filePath, line: UInt = #line) {
         let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", value), object: element)
         XCTAssertEqual(XCTWaiter().wait(for: [expectation], timeout: 5), .completed,
                        "Expected value \(value), got \(String(describing: element.value))", file: file, line: line)

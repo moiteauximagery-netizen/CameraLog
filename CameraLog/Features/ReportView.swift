@@ -76,8 +76,7 @@ struct ReportView: View {
                 pendingDeletion = nil
             }
         } message: { sheet in
-            Text("\(sheet.takes.count) prise(s) supprimée(s). Numéros de clips recalculés :\n"
-                 + ClipSequence.summary(repository.previewDeletion(of: sheet)))
+            Text(deletionMessage(sheet))
         }
         .logError($error)
     }
@@ -107,6 +106,11 @@ struct ReportView: View {
                 .accessibilityElement(children: .combine)
             }
         }
+    }
+
+    private func deletionMessage(_ sheet: ShotSheet) -> String {
+        let summary = ClipSequence.summary(repository.previewDeletion(of: sheet))
+        return "\(sheet.takes.count) prise(s) supprimée(s). Numéros de clips recalculés :\n\(summary)"
     }
 
     private func clipSummary(_ count: Int) -> String {
@@ -140,8 +144,7 @@ private struct SheetRow: View {
                     }
                     if takes.count > 7 { Text("+\(takes.count - 7)").font(.caption) }
                 }
-                Text(clips.isEmpty ? "Aucune prise"
-                     : "\(ClipCode.code(clips.min() ?? 0)) → \(ClipCode.code(clips.max() ?? 0))")
+                Text(rangeText(clips))
                     .font(.caption2.monospaced()).foregroundStyle(.secondary)
             }
 
@@ -151,8 +154,20 @@ private struct SheetRow: View {
         }
         .padding(.vertical, 5)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Scène \(sheet.scene), plan \(sheet.shot), \(takes.count) prises, "
-            + "\(takes.filter(\.isCircle).count) cerclées"
-            + (clips.isEmpty ? "" : ", clips \(ClipCode.code(clips.min() ?? 0)) à \(ClipCode.code(clips.max() ?? 0))"))
+        .accessibilityLabel(spokenLabel(takes: takes, clips: clips))
+    }
+
+    private func rangeText(_ clips: [Int]) -> String {
+        guard let low = clips.min(), let high = clips.max() else { return "Aucune prise" }
+        return "\(ClipCode.code(low)) → \(ClipCode.code(high))"
+    }
+
+    private func spokenLabel(takes: [TakeEntry], clips: [Int]) -> String {
+        let circled = takes.filter(\.isCircle).count
+        var text = "Scène \(sheet.scene), plan \(sheet.shot), \(takes.count) prises, \(circled) cerclées"
+        if let low = clips.min(), let high = clips.max() {
+            text += ", clips \(ClipCode.code(low)) à \(ClipCode.code(high))"
+        }
+        return text
     }
 }
