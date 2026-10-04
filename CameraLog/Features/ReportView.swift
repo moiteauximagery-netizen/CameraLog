@@ -165,7 +165,7 @@ struct ReportView: View {
 
     private func circle(_ take: TakeEntry) {
         do { try repository.toggleCircle(take); feedback += 1 }
-        catch { error = error.localizedDescription }
+        catch { self.error = error.localizedDescription }
     }
 }
 
