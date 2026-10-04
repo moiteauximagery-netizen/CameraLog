@@ -79,6 +79,19 @@ final class CameraLogUITests: XCTestCase {
         XCTAssertTrue(fourth.waitForExistence(timeout: 5))
         XCTAssertTrue(fourth.label.contains("C005"), fourth.label)
         attach(app, "5 T04 ajoutée")
+
+        // Deleting from the editor: the editor closes first, then the take disappears.
+        fourth.tap()
+        XCTAssertTrue(app.navigationBars["T04"].waitForExistence(timeout: 5))
+        let deleteButton = app.buttons["Supprimer cette prise"]
+        for _ in 0..<6 where !(deleteButton.exists && deleteButton.isHittable) { app.swipeUp() }
+        deleteButton.tap()
+        let confirm = app.buttons["Supprimer"].firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        attach(app, "6 Suppression avec renumérotation")
+        confirm.tap()
+        XCTAssertTrue(fourth.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["take-3"].exists)
     }
 
     @MainActor func testNewSheetShowsSuggestionsWithoutFillingFields() throws {

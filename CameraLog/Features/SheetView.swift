@@ -17,6 +17,7 @@ struct SheetView: View {
     @State private var loaded = false
     @State private var circleMode = false
     @State private var editingTake: TakeEntry?
+    @State private var takeToDelete: TakeEntry?
     @State private var inserting = false
     @State private var pendingMove: PendingMove?
     @State private var error: String?
@@ -74,8 +75,9 @@ struct SheetView: View {
             }
         }
         .onAppear(perform: load)
-        .sheet(item: $editingTake) { take in
-            TakeDetailView(take: take, repository: repository) { feedback += 1 }
+        .sheet(item: $editingTake, onDismiss: deletePendingTake) { take in
+            TakeDetailView(take: take, repository: repository,
+                           onSave: { feedback += 1 }, onDelete: { takeToDelete = take })
         }
         .sheet(isPresented: $inserting) {
             if let sheet {
@@ -357,6 +359,13 @@ struct SheetView: View {
             let clip = take.roll?.clipNumbers[take.id].map(ClipCode.code) ?? ""
             announce("Prise \(take.number) ajoutée, clip \(clip)")
         } catch { self.error = error.localizedDescription }
+    }
+
+    private func deletePendingTake() {
+        guard let take = takeToDelete else { return }
+        takeToDelete = nil
+        do { try repository.deleteTake(take); feedback += 1 }
+        catch { self.error = error.localizedDescription }
     }
 
     private func toggleCircleMode() {

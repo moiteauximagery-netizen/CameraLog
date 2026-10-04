@@ -5,6 +5,8 @@ struct TakeDetailView: View {
     let take: TakeEntry
     let repository: CameraLogRepository
     let onSave: () -> Void
+    /// Deletion is performed by the presenter once this screen is gone, so no view reads a deleted take.
+    let onDelete: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var label: String
     @State private var notes: String
@@ -12,8 +14,9 @@ struct TakeDetailView: View {
     @State private var confirmingDeletion = false
     @State private var error: String?
 
-    init(take: TakeEntry, repository: CameraLogRepository, onSave: @escaping () -> Void) {
-        self.take = take; self.repository = repository; self.onSave = onSave
+    init(take: TakeEntry, repository: CameraLogRepository,
+         onSave: @escaping () -> Void, onDelete: @escaping () -> Void) {
+        self.take = take; self.repository = repository; self.onSave = onSave; self.onDelete = onDelete
         _label = State(initialValue: take.labelText)
         _notes = State(initialValue: take.notes)
         _statuses = State(initialValue: take.statusValues)
@@ -127,8 +130,8 @@ struct TakeDetailView: View {
     }
 
     private func delete() {
-        do { try repository.deleteTake(take); onSave(); dismiss() }
-        catch { self.error = error.localizedDescription }
+        onDelete()
+        dismiss()
     }
 }
 

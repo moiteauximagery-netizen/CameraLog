@@ -39,7 +39,7 @@ Le run de référence est indiqué dans le README. Les tests ont tourné sur **i
 
 Ils pilotent la vraie interface sur le simulateur, avec LES OMBRES en mémoire.
 
-- `testTapEditsInNormalModeAndCirclesInCircleMode` : ouvre le rapport puis la fiche 24/03 ; un toucher en mode normal ouvre l'édition T01, où FC est appliqué ; en mode Cerclage, deux touchers cerclent puis décerclent T01 sans ouvrir l'édition, et le libellé FC reste ; hors cerclage, le toucher rouvre l'édition ; + crée T04, annoncé comme clip C005.
+- `testTapEditsInNormalModeAndCirclesInCircleMode` : ouvre le rapport puis la fiche 24/03 ; un toucher en mode normal ouvre l'édition T01, où FC est appliqué ; en mode Cerclage, deux touchers cerclent puis décerclent T01 sans ouvrir l'édition, et le libellé FC reste ; hors cerclage, le toucher rouvre l'édition ; + crée T04, annoncé comme clip C005 ; T04 est ensuite supprimée depuis son édition, après confirmation.
 - `testNewSheetShowsSuggestionsWithoutFillingFields` : une nouvelle fiche affiche « Rien d'enregistré » et des suggestions ; Reprendre remplit l'objectif (35mm) ; Tout reprendre accepte le reste.
 
 Ces tests utilisent les valeurs d'accessibilité (« cerclée », « activé »), donc vérifient aussi ce que VoiceOver annonce. Ils ne vérifient pas le rendu visuel : les captures sont à relire dans l'artefact.
