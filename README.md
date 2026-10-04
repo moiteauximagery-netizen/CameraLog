@@ -10,7 +10,7 @@ Le projet inclut une compilation GitHub Actions sur runner macOS standard pour d
 
 La fondation de Phase 1 est écrite : projet Xcode, stockage SwiftData, parcours production → journée → caméra, exemple LES OMBRES et tests XCTest. Dans le rapport caméra, les rolls et prises sont désormais affichés ensemble, avec une ligne compacte par scène/plan, recherche et Circle directement sur le numéro de prise. SmartFill prépare la prise suivante ; la fiche de prise est modifiable.
 
-**Compilation et neuf tests XCTest validés sur Mac distant** via GitHub Actions le 4 octobre 2026 (Xcode 16.4, simulateur iOS 26.2). La compilation Release ARM64 et la préparation de l'IPA pour appareil physique réussissent également. Le [run GitHub Actions n° 6](https://github.com/moiteauximagery-netizen/CameraLog/actions/runs/37192670181) contient le fichier à télécharger. Une copie se trouve sur le PC dans `build/iphone/CameraLog.ipa`. La nouvelle présentation reste à éprouver sur un véritable iPhone en conditions de tournage ; ces tests ne constituent pas une validation plateau.
+**Compilation et neuf tests XCTest validés sur Mac distant** via GitHub Actions le 4 octobre 2026 (Xcode 16.4, simulateur iOS 26.2). La compilation Release ARM64 et la préparation de l'IPA pour appareil physique réussissent également. Le [run GitHub Actions n° 7](https://github.com/moiteauximagery-netizen/CameraLog/actions/runs/37193113391) contient le fichier à télécharger. Une copie se trouve sur le PC dans `build/iphone/CameraLog.ipa`. La nouvelle présentation reste à éprouver sur un véritable iPhone en conditions de tournage ; ces tests ne constituent pas une validation plateau.
 
 ## Ouvrir sur Mac
 
