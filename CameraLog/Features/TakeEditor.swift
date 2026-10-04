@@ -179,6 +179,6 @@ struct TakeEditor: View {
             if let existingTake { try repository.updateTake(existingTake, draft: draft) }
             else { try repository.addTake(to: roll, draft: draft) }
             onSave(); dismiss()
-        } catch { error = error.localizedDescription }
+        } catch { self.error = error.localizedDescription }
     }
 }

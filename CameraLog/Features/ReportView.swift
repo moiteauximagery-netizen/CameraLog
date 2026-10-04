@@ -52,45 +52,7 @@ struct ReportView: View {
     }
 
     var body: some View {
-        List {
-            Picker("Rechercher par", selection: $searchScope) {
-                ForEach(ReportSearch.allCases) { scope in Text(scope.rawValue).tag(scope) }
-            }
-            .pickerStyle(.segmented)
-            .listRowBackground(Color.clear)
-
-            ForEach(report.orderedRolls.reversed()) { roll in
-                let rows = groups(for: roll)
-                if !rows.isEmpty || query.isEmpty {
-                    Section {
-                        if rows.isEmpty {
-                            Text("Aucune prise sur ce roll")
-                                .foregroundStyle(.secondary)
-                        } else {
-                            ForEach(rows) { group in
-                                TakeGroupRow(group: group,
-                                    edit: { editingTake = $0 },
-                                    circle: circle,
-                                    delete: { pendingDeletion = $0 })
-                            }
-                        }
-                    } header: {
-                        HStack {
-                            Text("ROLL \(roll.name)")
-                            Spacer()
-                            Text("\(roll.takes.count) prises")
-                        }
-                    }
-                }
-            }
-
-            if report.rolls.isEmpty {
-                ContentUnavailableView("Premier roll", systemImage: "sdcard",
-                    description: Text("Ajoute un roll ou une carte pour commencer."))
-            } else if !query.isEmpty && !report.rolls.contains(where: { !groups(for: $0).isEmpty }) {
-                ContentUnavailableView.search(text: query)
-            }
-        }
+        reportList
         .searchable(text: $query, prompt: "Scène, roll ou objectif")
         .navigationTitle("CAM \(report.camera?.name ?? "—")")
         .toolbar {
@@ -98,31 +60,7 @@ struct ReportView: View {
                 Button("Nouveau roll", systemImage: "plus.rectangle.on.folder") { addingRoll = true }
             }
         }
-        .safeAreaInset(edge: .bottom) {
-            HStack(spacing: 12) {
-                if let roll = selectedRoll {
-                    Menu {
-                        ForEach(report.orderedRolls.reversed()) { item in
-                            Button(item.name) { selectedRollID = item.id }
-                        }
-                    } label: {
-                        Label(roll.name, systemImage: "sdcard")
-                            .lineLimit(1).frame(minHeight: 52)
-                    }
-                    .buttonStyle(.bordered)
-                    .accessibilityLabel("Roll actif : \(roll.name)")
-                }
-                Button { addingTake = true } label: {
-                    Label("Nouvelle prise", systemImage: "plus")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity, minHeight: 52)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(selectedRoll == nil)
-            }
-            .padding(.horizontal).padding(.vertical, 8)
-            .background(.bar)
-        }
+        .safeAreaInset(edge: .bottom) { activeRollBar }
         .sheet(isPresented: $addingRoll) {
             RollEditor(report: report, repository: repository) {
                 selectedRollID = $0.id; feedback += 1
@@ -146,12 +84,83 @@ struct ReportView: View {
             Button("Supprimer", role: .destructive) {
                 guard let take = pendingDeletion else { return }
                 do { try repository.deleteTake(take) }
-                catch { error = error.localizedDescription }
+                catch { self.error = error.localizedDescription }
                 pendingDeletion = nil
             }
         }
         .sensoryFeedback(.success, trigger: feedback)
         .logError($error)
+    }
+
+    private var reportList: some View {
+        List {
+            Picker("Rechercher par", selection: $searchScope) {
+                ForEach(ReportSearch.allCases) { scope in Text(scope.rawValue).tag(scope) }
+            }
+            .pickerStyle(.segmented)
+            .listRowBackground(Color.clear)
+
+            ForEach(report.orderedRolls.reversed()) { roll in
+                rollSection(roll)
+            }
+
+            if report.rolls.isEmpty {
+                ContentUnavailableView("Premier roll", systemImage: "sdcard",
+                    description: Text("Ajoute un roll ou une carte pour commencer."))
+            } else if !query.isEmpty && !report.rolls.contains(where: { !groups(for: $0).isEmpty }) {
+                ContentUnavailableView.search(text: query)
+            }
+        }
+    }
+
+    @ViewBuilder private func rollSection(_ roll: Roll) -> some View {
+        let rows = groups(for: roll)
+        if !rows.isEmpty || query.isEmpty {
+            Section {
+                if rows.isEmpty {
+                    Text("Aucune prise sur ce roll").foregroundStyle(.secondary)
+                } else {
+                    ForEach(rows) { group in
+                        TakeGroupRow(group: group,
+                            edit: { editingTake = $0 },
+                            circle: circle,
+                            delete: { pendingDeletion = $0 })
+                    }
+                }
+            } header: {
+                HStack {
+                    Text("ROLL \(roll.name)")
+                    Spacer()
+                    Text("\(roll.takes.count) prises")
+                }
+            }
+        }
+    }
+
+    private var activeRollBar: some View {
+            HStack(spacing: 12) {
+                if let roll = selectedRoll {
+                    Menu {
+                        ForEach(report.orderedRolls.reversed()) { item in
+                            Button(item.name) { selectedRollID = item.id }
+                        }
+                    } label: {
+                        Label(roll.name, systemImage: "sdcard")
+                            .lineLimit(1).frame(minHeight: 52)
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("Roll actif : \(roll.name)")
+                }
+                Button { addingTake = true } label: {
+                    Label("Nouvelle prise", systemImage: "plus")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(selectedRoll == nil)
+            }
+            .padding(.horizontal).padding(.vertical, 8)
+            .background(.bar)
     }
 
     private func circle(_ take: TakeEntry) {
