@@ -41,6 +41,12 @@ final class CameraLogUITests: XCTestCase {
                        "Expected label containing \(text), got \(element.label)", file: file, line: line)
     }
 
+    @MainActor private func waitForKeyboardFocus(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hasKeyboardFocus == true"), object: element)
+        XCTAssertEqual(XCTWaiter().wait(for: [expectation], timeout: 5), .completed, "Field should have focus",
+                       file: file, line: line)
+    }
+
     @MainActor func testTakeBoxEditsInNormalModeAndCirclesInCircleMode() throws {
         let app = openReport()
         attach(app, "1 Liste groupée par roll")
@@ -60,9 +66,9 @@ final class CameraLogUITests: XCTestCase {
         let field = app.textFields["take-label-field"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         wait(field, value: "1")
+        waitForKeyboardFocus(field)
         attach(app, "3 Édition dans la case")
-        field.tap()
-        field.typeText("PU\n")
+        app.typeText("PU\n")
         XCTAssertTrue(field.waitForNonExistence(timeout: 5))
         wait(first, labelContains: "Prise 1, clip C001, libellé PU")
         wait(first, value: "non cerclée")
@@ -84,8 +90,9 @@ final class CameraLogUITests: XCTestCase {
         wait(mode, value: "désactivé")
         first.tap()
         XCTAssertTrue(field.waitForExistence(timeout: 5))
-        field.tap()
-        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 4) + "FC\n")
+        wait(field, value: "1PU")
+        waitForKeyboardFocus(field)
+        app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3) + "FC\n")
         XCTAssertTrue(field.waitForNonExistence(timeout: 5))
         wait(first, labelContains: "Sans numéro de prise, clip C001, libellé FC")
 
