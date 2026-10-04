@@ -393,6 +393,57 @@ import SwiftData
         XCTAssertEqual(repo.newSheetDraft(for: report).suggestion(.lens), "85mm")
     }
 
+    /// Store written in CI by the shipped code (commit 241fd6e, IPA of run 7), not by a replica.
+    func testOpeningAStoreWrittenByTheShippedVersion() throws {
+        guard let directory = ProcessInfo.processInfo.environment["CAMERALOG_V1_FIXTURE"] else {
+            throw XCTSkip("The shipped-version store is produced by the CI workflow.")
+        }
+        let source = URL(fileURLWithPath: directory)
+        let ids = try JSONDecoder().decode([String].self, from: Data(contentsOf: source.appendingPathComponent("ids.json")))
+            .compactMap(UUID.init(uuidString:))
+        XCTAssertEqual(ids.count, 4)
+        // Work on a copy: the fixture itself must stay a version 1 store.
+        let (copy, _) = try temporaryStoreURL()
+        defer { try? FileManager.default.removeItem(at: copy) }
+        for name in try FileManager.default.contentsOfDirectory(atPath: directory) where name.hasPrefix("legacy.store") {
+            try FileManager.default.copyItem(at: source.appendingPathComponent(name), to: copy.appendingPathComponent(name))
+        }
+
+        let container = try CameraLogStore.makeContainer(url: copy.appendingPathComponent("legacy.store"))
+        let repo = CameraLogRepository(context: container.mainContext)
+        XCTAssertEqual(try repo.migrateLegacyTakes(), 4)
+        XCTAssertEqual(try repo.migrateLegacyTakes(), 0)
+
+        let takes = try container.mainContext.fetch(FetchDescriptor<TakeEntry>())
+        XCTAssertEqual(Set(takes.map(\.id)), Set(ids), "Every take and identifier is kept")
+        let byID = Dictionary(uniqueKeysWithValues: takes.map { ($0.id, $0) })
+        let t1 = try XCTUnwrap(byID[ids[0]]), t2 = try XCTUnwrap(byID[ids[1]])
+        let t3 = try XCTUnwrap(byID[ids[2]]), t4 = try XCTUnwrap(byID[ids[3]])
+        XCTAssertEqual(t1.clipName, "A010C001_typed")
+        XCTAssertEqual(t1.settings.lensName, "50mm"); XCTAssertEqual(t1.settings.filters, ["ND 0.6"])
+        XCTAssertTrue(t2.isCircle); XCTAssertTrue(t2.statusValues.contains("VFX"))
+        XCTAssertEqual(t3.notes, "note v1"); XCTAssertEqual(t3.settings.iso, 1280)
+        XCTAssertEqual(t3.snapshot["lens"], "85mm")
+        XCTAssertEqual([t1, t2, t3, t4].map(\.labelText), ["", "", "", ""])
+
+        let a010 = try XCTUnwrap(t1.roll), a011 = try XCTUnwrap(t4.roll)
+        XCTAssertEqual(a010.card, "CARD 7")
+        XCTAssertEqual(a010.clipSequence.map(\.id), [ids[0], ids[1], ids[2]])
+        XCTAssertEqual(a011.clipNumbers[t4.id], 1, "Each card keeps its own sequence")
+        XCTAssertEqual(a010.currentSheets.count, 2)
+        XCTAssertEqual(a011.currentSheets.map(\.title), ["14 / B"], "Same shot on two rolls")
+        XCTAssertEqual(t1.sheet?.id, t2.sheet?.id)
+
+        let added = try repo.addNextTake(to: try XCTUnwrap(t1.sheet))
+        XCTAssertEqual(added.number, 3)
+        XCTAssertEqual(a010.clipNumbers[added.id], 4)
+
+        // The migrated store reopens as a version 2 store.
+        let reopened = try CameraLogStore.makeContainer(url: copy.appendingPathComponent("legacy.store"))
+        XCTAssertEqual(try reopened.mainContext.fetchCount(FetchDescriptor<TakeEntry>()), 5)
+        XCTAssertEqual(try reopened.mainContext.fetchCount(FetchDescriptor<ShotSheet>()), 3)
+    }
+
     func testSampleData() throws {
         let (container, repo) = try setupStore()
         try SampleData.load(into: repo)

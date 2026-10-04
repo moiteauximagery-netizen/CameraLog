@@ -20,6 +20,9 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The previously shipped commit is needed to write a real version 1 store.
+          fetch-depth: 0
 
       - name: Environnement Apple et structure du projet
         run: |
@@ -30,11 +33,31 @@ jobs:
       - name: Choisir un simulateur iPhone disponible
         run: python3 scripts/select_simulator.py
 
+      - name: Base écrite par la version installée (commit 241fd6e, IPA du run 7)
+        run: |
+          set -o pipefail
+          mkdir -p build
+          legacy="$RUNNER_TEMP/legacy"
+          git worktree add --detach "$legacy" 241fd6e7839f6961eb17c7186d6c586c4b846283
+          cp ci/legacy/LegacyFixtureWriter.swift "$legacy/CameraLogTests/"
+          (cd "$legacy" && python3 scripts/generate_project.py)
+          TEST_RUNNER_CAMERALOG_V1_FIXTURE="$RUNNER_TEMP/v1" xcodebuild test \
+            -project "$legacy/CameraLog.xcodeproj" -scheme CameraLog \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+            -destination-timeout 180 \
+            -only-testing:CameraLogTests/LegacyFixtureWriter \
+            -derivedDataPath "$RUNNER_TEMP/legacy-dd" \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/legacy-fixture.log
+          test -f "$RUNNER_TEMP/v1/legacy.store"
+          test -f "$RUNNER_TEMP/v1/ids.json"
+          ls -la "$RUNNER_TEMP/v1"
+          echo "CAMERALOG_V1_FIXTURE=$RUNNER_TEMP/v1" >> "$GITHUB_ENV"
+
       - name: Tests XCTest sur simulateur
         run: |
           set -o pipefail
           mkdir -p build
-          xcodebuild test \
+          TEST_RUNNER_CAMERALOG_V1_FIXTURE="$CAMERALOG_V1_FIXTURE" xcodebuild test \
             -project CameraLog.xcodeproj -scheme CameraLog \
             -configuration Debug \
             -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
@@ -79,7 +102,7 @@ jobs:
 
       - name: Erreurs lisibles dans le résumé du run
         if: failure()
-        run: python3 scripts/report_errors.py build/tests.log build/device-build.log
+        run: python3 scripts/report_errors.py build/legacy-fixture.log build/tests.log build/device-build.log
 
       - name: Captures d'écran des tests d'interface
         if: always()
@@ -94,7 +117,7 @@ jobs:
         run: |
           if [ -d build/CameraLogTests.xcresult ]; then
             xcrun xcresulttool get test-results summary \
-              --path build/CameraLogTests.xcresult > build/test-summary.json
+  \n            --path build/CameraLogTests.xcresult > build/test-summary.json
             cat build/test-summary.json
             python3 scripts/report_tests.py build/CameraLogTests.xcresult || true
           fi
