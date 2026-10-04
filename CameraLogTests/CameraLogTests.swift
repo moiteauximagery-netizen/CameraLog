@@ -58,7 +58,7 @@ import SwiftData
         XCTAssertEqual(draft.suggestion(.whiteBalance), "5600")
         XCTAssertEqual(draft.suggestion(.filters), "ND 0.6")
         XCTAssertEqual(draft.suggestion(.roll), "A010")
-        XCTAssertNil(draft.suggestion(.shot), "The plan is never suggested")
+        XCTAssertEqual(draft.suggestion(.shot), "B", "The next plan is proposed, not imposed")
         XCTAssertTrue(draft.isPending(.lens))
         XCTAssertNil(draft.savedContent[SheetField.lens.rawValue])
 
@@ -144,7 +144,7 @@ import SwiftData
         XCTAssertEqual(repo.nextTakeNumber(in: sheet), 1)
         let numbers = try (1...3).map { _ in try repo.addNextTake(to: sheet).number }
         XCTAssertEqual(numbers, [1, 2, 3])
-        XCTAssertEqual(sheet.orderedTakes.map { TakeLabel.code($0.number) }, ["T01", "T02", "T03"])
+        XCTAssertEqual(sheet.orderedTakes.map { TakeLabel.code($0.number) }, ["1", "2", "3"])
         let other = try repo.saveSheet(sheetDraft("14", "B", roll: "A010"), sheet: nil, in: report)
         XCTAssertEqual(try repo.addNextTake(to: other).number, 1)
     }
@@ -178,7 +178,7 @@ import SwiftData
         try repo.updateTake(fc, label: " fc ", statuses: [TakeStatus.vfx.rawValue], notes: "")
         XCTAssertEqual(fc.labelText, "fc")
         try repo.updateTake(fc, label: "FC", statuses: [TakeStatus.vfx.rawValue], notes: "")
-        XCTAssertEqual(TakeLabel.title(number: fc.number, label: fc.labelText), "T02 · FC")
+        XCTAssertEqual(TakeLabel.title(number: fc.number, label: fc.labelText), "2FC")
         XCTAssertFalse(fc.isCircle)
         try repo.toggleCircle(fc)
         XCTAssertEqual(fc.labelText, "FC")
@@ -391,6 +391,9 @@ import SwiftData
         XCTAssertEqual(added.number, 2)
         XCTAssertEqual(roll.clipNumbers[added.id], 4)
         XCTAssertEqual(repo.newSheetDraft(for: report).suggestion(.lens), "85mm")
+        let production = try XCTUnwrap(report.day?.production)
+        XCTAssertEqual(production.lensKit, [])
+        XCTAssertEqual(production.filterKit, FilterFamily.defaultKit)
     }
 
     /// Store written in CI by the shipped code (commit 241fd6e, IPA of run 7), not by a replica.
@@ -442,6 +445,181 @@ import SwiftData
         let reopened = try CameraLogStore.makeContainer(url: copy.appendingPathComponent("legacy.store"))
         XCTAssertEqual(try reopened.mainContext.fetchCount(FetchDescriptor<TakeEntry>()), 5)
         XCTAssertEqual(try reopened.mainContext.fetchCount(FetchDescriptor<ShotSheet>()), 3)
+    }
+
+    /// Store written in CI by the code of IPA build 15 (commit 20df5d9, schema 2, shot sheets).
+    func testOpeningAStoreWrittenByBuild15() throws {
+        guard let directory = ProcessInfo.processInfo.environment["CAMERALOG_V2_FIXTURE"] else {
+            throw XCTSkip("The build 15 store is produced by the CI workflow.")
+        }
+        let source = URL(fileURLWithPath: directory)
+        let ids = try JSONDecoder().decode([String].self, from: Data(contentsOf: source.appendingPathComponent("ids.json")))
+            .compactMap(UUID.init(uuidString:))
+        XCTAssertEqual(ids.count, 6)
+        let (copy, _) = try temporaryStoreURL()
+        defer { try? FileManager.default.removeItem(at: copy) }
+        for name in try FileManager.default.contentsOfDirectory(atPath: directory) where name.hasPrefix("build15.store") {
+            try FileManager.default.copyItem(at: source.appendingPathComponent(name), to: copy.appendingPathComponent(name))
+        }
+        let url = copy.appendingPathComponent("build15.store")
+        let container = try CameraLogStore.makeContainer(url: url)
+        let repo = CameraLogRepository(context: container.mainContext)
+        XCTAssertEqual(try repo.migrateLegacyTakes(), 0, "Build 15 takes already belong to sheets")
+
+        let takes = try container.mainContext.fetch(FetchDescriptor<TakeEntry>())
+        XCTAssertEqual(Set(takes.map(\.id)), Set(ids))
+        let byID = Dictionary(uniqueKeysWithValues: takes.map { ($0.id, $0) })
+        let a1 = try XCTUnwrap(byID[ids[0]]), a2 = try XCTUnwrap(byID[ids[1]]), a3 = try XCTUnwrap(byID[ids[2]])
+        let b1 = try XCTUnwrap(byID[ids[3]]), a4 = try XCTUnwrap(byID[ids[4]]), c1 = try XCTUnwrap(byID[ids[5]])
+        XCTAssertEqual(a2.labelText, "FC")
+        XCTAssertTrue(a3.isCircle); XCTAssertTrue(a3.statusValues.contains("VFX")); XCTAssertEqual(a3.notes, "bonne")
+        XCTAssertEqual(a1.snapshot["lens"], "50mm", "Snapshots are kept")
+        XCTAssertEqual(a1.sheet?.settings["lens"], "85mm")
+        XCTAssertEqual(a4.number, 4)
+        let a010 = try XCTUnwrap(a1.roll)
+        XCTAssertEqual(a010.clipSequence.map(\.id), [a1.id, a2.id, a4.id, a3.id, b1.id], "Card order is kept")
+        XCTAssertEqual(c1.roll?.name, "A011"); XCTAssertEqual(c1.roll?.clipNumbers[c1.id], 1)
+        let day = try XCTUnwrap(a010.report?.day)
+        XCTAssertEqual(day.location, "Studio 2")
+        let production = try XCTUnwrap(day.production)
+        XCTAssertEqual(production.lensKit, [])
+        XCTAssertEqual(production.filterKit, FilterFamily.defaultKit)
+
+        try repo.updateProduction(production, name: production.name, client: "", director: "", cinematographer: "",
+                                  start: production.startDate, end: nil, projectNumber: "", notes: "",
+                                  lensKit: ["25 mm", "50 mm"], filterKit: [FilterFamily(name: "ND", grades: ["0.3"])])
+        let added = try repo.addNextTake(to: try XCTUnwrap(a1.sheet))
+        XCTAssertEqual(added.number, 5)
+        XCTAssertEqual(a010.clipNumbers[added.id], 6)
+        let reopened = try CameraLogStore.makeContainer(url: url)
+        let productions = try reopened.mainContext.fetch(FetchDescriptor<Production>())
+        XCTAssertEqual(productions.first?.lensKit, ["25 mm", "50 mm"])
+        XCTAssertEqual(try reopened.mainContext.fetchCount(FetchDescriptor<TakeEntry>()), 7)
+    }
+
+    func testNextPlanIsIncremented() {
+        XCTAssertEqual(ShotIncrement.next(after: "2"), "3")
+        XCTAssertEqual(ShotIncrement.next(after: "09"), "10")
+        XCTAssertEqual(ShotIncrement.next(after: "03"), "04")
+        XCTAssertEqual(ShotIncrement.next(after: "99"), "100")
+        XCTAssertEqual(ShotIncrement.next(after: "A"), "B")
+        XCTAssertEqual(ShotIncrement.next(after: "14A"), "14B")
+        XCTAssertEqual(ShotIncrement.next(after: "3b"), "3c")
+        XCTAssertNil(ShotIncrement.next(after: "Z"))
+        XCTAssertNil(ShotIncrement.next(after: " "))
+    }
+
+    func testAddingCamerasUsesTheNextLetter() throws {
+        let (_, repo) = try setupStore()
+        let production = try repo.addProduction(name: "P")
+        let day = try repo.addDay(to: production, number: 1, date: Date())
+        let names = try (1...3).map { _ in try repo.addNextCamera(to: day).camera?.name }
+        XCTAssertEqual(names, ["A", "B", "C"])
+        XCTAssertEqual(day.reports.count, 3)
+        let b = try XCTUnwrap(day.reports.first { $0.camera?.name == "B" })
+        try repo.deleteReport(b)
+        XCTAssertEqual(try repo.addNextCamera(to: day).camera?.name, "B", "A free letter is reused")
+        let next = try repo.addDay(to: production, number: 2, date: Date())
+        let reused = try repo.addNextCamera(to: next)
+        XCTAssertEqual(reused.camera?.name, "A")
+        XCTAssertEqual(production.cameras.count, 3, "Day 2 reuses the production camera A")
+        XCTAssertEqual(CameraNaming.next(used: ["a", "B"]), "C")
+    }
+
+    func testEveryCommitChangesTheRevisionReadByScreens() throws {
+        let (_, repo) = try setupStore()
+        let start = repo.revision
+        let production = try repo.addProduction(name: "P")
+        let day = try repo.addDay(to: production, number: 1, date: Date())
+        try repo.addNextCamera(to: day)
+        XCTAssertEqual(repo.revision, start + 3)
+    }
+
+    func testEditingDayCameraAndRoll() throws {
+        let (_, repo) = try setupStore()
+        let (production, report) = try report(repo)
+        let day = try XCTUnwrap(report.day)
+        try repo.updateDay(day, number: 12, date: day.date, location: "Plateau 5", unit: "2nd unit", notes: "Pluie")
+        XCTAssertEqual(day.location, "Plateau 5"); XCTAssertEqual(day.unit, "2nd unit")
+        try repo.addDay(to: production, number: 13, date: Date())
+        XCTAssertThrowsError(try repo.updateDay(day, number: 13, date: day.date, location: "", unit: "", notes: ""))
+        XCTAssertEqual(day.number, 12)
+
+        let camera = try XCTUnwrap(report.camera)
+        try repo.updateCamera(camera, name: "A", manufacturer: "ARRI", model: "Alexa 35", serialNumber: "123")
+        XCTAssertEqual(camera.model, "Alexa 35")
+        try repo.addCamera(to: production, name: "B")
+        XCTAssertThrowsError(try repo.updateCamera(camera, name: "b", manufacturer: "", model: "", serialNumber: ""))
+        XCTAssertEqual(camera.name, "A")
+
+        let sheet = try repo.saveSheet(sheetDraft("14", "A", roll: "A010"), sheet: nil, in: report)
+        let take = try repo.addNextTake(to: sheet)
+        try repo.saveSheet(sheetDraft("15", "A", roll: "A011"), sheet: nil, in: report)
+        let roll = try XCTUnwrap(sheet.roll)
+        XCTAssertThrowsError(try repo.updateRoll(roll, name: "a011", card: "", reel: ""))
+        try repo.updateRoll(roll, name: "a012", card: "CARD 3", reel: "R1")
+        XCTAssertEqual(sheet.roll?.name, "A012"); XCTAssertEqual(roll.card, "CARD 3")
+        XCTAssertEqual(roll.clipNumbers[take.id], 1, "Renaming a roll keeps its clip numbers")
+    }
+
+    func testLensAndFilterKitsOfTheProduction() throws {
+        XCTAssertEqual(LensKit.parse("18, 25 32;50mm\n75"), ["18 mm", "25 mm", "32 mm", "50mm", "75 mm"])
+        XCTAssertEqual(LensKit.merged(["50 mm", "18 mm"], adding: ["25 mm", "50 MM", "Macro"]),
+                       ["18 mm", "25 mm", "50 mm", "Macro"])
+        let (_, repo) = try setupStore()
+        let (production, report) = try report(repo)
+        XCTAssertEqual(production.lensKit, [], "No series: the lens field has no menu")
+        XCTAssertEqual(production.filterKit, FilterFamily.defaultKit)
+        try repo.updateProduction(production, name: "Test", client: "", director: "", cinematographer: "",
+            start: production.startDate, end: nil, projectNumber: "", notes: "",
+            lensKit: ["18 mm", "50 mm"], filterKit: [FilterFamily(name: "ND", grades: ["0.3", "0.6"]),
+                                                     FilterFamily(name: "  ", grades: [])])
+        XCTAssertEqual(report.day?.production?.lensKit, ["18 mm", "50 mm"])
+        XCTAssertEqual(production.filterKit, [FilterFamily(name: "ND", grades: ["0.3", "0.6"])], "Unnamed families are dropped")
+        try repo.updateProduction(production, name: "Test", client: "", director: "", cinematographer: "",
+            start: production.startDate, end: nil, projectNumber: "", notes: "", lensKit: [], filterKit: [])
+        XCTAssertEqual(production.filterKit, [], "An emptied kit stays empty")
+        XCTAssertEqual(FilterFamily.parseGrades("1/8, 1/4 ;1/2"), ["1/8", "1/4", "1/2"])
+    }
+
+    func testFilterAndApertureSelection() {
+        var text = FilterSelection.apply(family: "ND", grade: "0.6", to: "")
+        XCTAssertEqual(text, "ND 0.6")
+        text = FilterSelection.apply(family: "BPM", grade: "1/4", to: text)
+        XCTAssertEqual(text, "ND 0.6 + BPM 1/4")
+        text = FilterSelection.apply(family: "ND", grade: "0.9", to: text)
+        XCTAssertEqual(text, "ND 0.9 + BPM 1/4", "Another grade of the same family replaces it")
+        text = FilterSelection.apply(family: "IRND", grade: "0.3", to: text)
+        XCTAssertEqual(text, "ND 0.9 + BPM 1/4 + IRND 0.3", "IRND is not ND")
+        text = FilterSelection.apply(family: "ND", grade: "0.9", to: text)
+        XCTAssertEqual(text, "BPM 1/4 + IRND 0.3", "Choosing the selected value removes it")
+        text = FilterSelection.apply(family: "POLA", grade: "", to: text)
+        XCTAssertEqual(text, "BPM 1/4 + IRND 0.3 + POLA")
+        XCTAssertTrue(FilterSelection.isSelected(family: "POLA", grade: "", in: text))
+        XCTAssertEqual(Aperture.rows.count, 10)
+        XCTAssertEqual(Aperture.rows.first, ["1", "1 ⅓", "1 ⅔"])
+        XCTAssertEqual(Aperture.rows[3], ["2.8", "2.8 ⅓", "2.8 ⅔"])
+        XCTAssertEqual(Aperture.rows.last, ["22"])
+    }
+
+    func testInlineTakeLabel() throws {
+        XCTAssertEqual(TakeLabel.label(fromTyped: "4PU", number: 4), "PU")
+        XCTAssertEqual(TakeLabel.label(fromTyped: " FC ", number: 4), "FC")
+        XCTAssertEqual(TakeLabel.label(fromTyped: "4", number: 4), "")
+        let (_, repo) = try setupStore()
+        let (_, report) = try report(repo)
+        let sheet = try repo.saveSheet(sheetDraft("14", "A", roll: "A010"), sheet: nil, in: report)
+        let take = try repo.addNextTake(to: sheet)
+        try repo.updateTake(take, label: "", statuses: [TakeStatus.mos.rawValue], notes: "note")
+        try repo.toggleCircle(take)
+        let revision = take.revision
+        try repo.updateLabel(take, label: TakeLabel.label(fromTyped: "1PU", number: 1))
+        XCTAssertEqual(TakeLabel.title(number: take.number, label: take.labelText), "1PU")
+        XCTAssertTrue(take.isCircle); XCTAssertEqual(take.notes, "note")
+        XCTAssertTrue(take.statusValues.contains(TakeStatus.mos.rawValue))
+        XCTAssertEqual(take.revision, revision + 1)
+        try repo.updateLabel(take, label: "PU")
+        XCTAssertEqual(take.revision, revision + 1, "Unchanged label: nothing written")
     }
 
     func testSampleData() throws {

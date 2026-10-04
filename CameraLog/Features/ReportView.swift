@@ -13,6 +13,7 @@ struct ReportView: View {
     @State private var searchScope: ReportSearch = .all
     @State private var error: String?
     @State private var pendingDeletion: ShotSheet?
+    @State private var editingRoll: Roll?
 
     private var rolls: [Roll] {
         report.orderedRolls.reversed().filter { !$0.currentSheets.isEmpty }
@@ -36,6 +37,7 @@ struct ReportView: View {
     }
 
     var body: some View {
+        let _ = repository.revision
         List {
             Picker("Rechercher par", selection: $searchScope) {
                 ForEach(ReportSearch.allCases) { scope in Text(scope.rawValue).tag(scope) }
@@ -78,6 +80,7 @@ struct ReportView: View {
         } message: { sheet in
             Text(deletionMessage(sheet))
         }
+        .sheet(item: $editingRoll) { roll in RollEditor(roll: roll, repository: repository) }
         .logError($error)
     }
 
@@ -99,11 +102,15 @@ struct ReportView: View {
                 }
             } header: {
                 HStack {
-                    Text("ROLL \(roll.name)")
+                    Button { editingRoll = roll } label: {
+                        Label("ROLL \(roll.name)", systemImage: "pencil")
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .accessibilityLabel("Modifier le roll \(roll.name)")
+                    .accessibilityIdentifier("edit-roll-\(roll.name)")
                     Spacer()
                     Text(clipSummary(roll.clipCount)).monospacedDigit()
                 }
-                .accessibilityElement(children: .combine)
             }
         }
     }
@@ -169,5 +176,44 @@ private struct SheetRow: View {
             text += ", clips \(ClipCode.code(low)) à \(ClipCode.code(high))"
         }
         return text
+    }
+}
+
+/// Roll name, card and reel. Renaming moves every sheet of the roll with it.
+struct RollEditor: View {
+    let roll: Roll
+    let repository: CameraLogRepository
+    @Environment(\.dismiss) private var dismiss
+    @State private var name: String
+    @State private var card: String
+    @State private var reel: String
+    @State private var error: String?
+    init(roll: Roll, repository: CameraLogRepository) {
+        self.roll = roll; self.repository = repository
+        _name = State(initialValue: roll.name)
+        _card = State(initialValue: roll.card)
+        _reel = State(initialValue: roll.reel)
+    }
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Roll, par exemple A010", text: $name)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                    TextField("Card", text: $card)
+                    TextField("Reel", text: $reel)
+                } footer: {
+                    Text("Renommer le roll renomme la carte de toutes ses fiches ; les numéros de clips ne changent pas.")
+                }
+            }
+            .navigationTitle("ROLL \(roll.name)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { SaveToolbar(save: {
+                do { try repository.updateRoll(roll, name: name, card: card, reel: reel); dismiss() }
+                catch { self.error = error.localizedDescription }
+            }, cancel: { dismiss() }) }
+            .logError($error)
+        }
     }
 }

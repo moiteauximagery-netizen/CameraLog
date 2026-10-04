@@ -1,25 +1,27 @@
 import Foundation
+import Observation
 import SwiftData
 
-/// Schema 2 adds shot sheets, take labels, card order and settings snapshots.
-enum SchemaV2: VersionedSchema {
-    static let versionIdentifier = Schema.Version(2, 0, 0)
+/// Schema 3 adds the lens and filter kits of a production. Current models are top-level types.
+enum SchemaV3: VersionedSchema {
+    static let versionIdentifier = Schema.Version(3, 0, 0)
     static var models: [any PersistentModel.Type] {
         [Production.self, ShootDay.self, Camera.self, CameraReport.self, Roll.self, ShotSheet.self, TakeEntry.self]
     }
 }
 
-/// Version 1 → 2 only adds an entity, a relationship and optional attributes: a lightweight
-/// migration keeps every row and identifier. Sheets are then attached by `migrateLegacyTakes()`.
+/// Each step only adds entities, relationships or optional attributes: lightweight migrations keep
+/// every row and identifier. Version 1 takes are then attached to sheets by `migrateLegacyTakes()`.
 enum CameraLogMigrationPlan: SchemaMigrationPlan {
-    static var schemas: [any VersionedSchema.Type] { [SchemaV1.self, SchemaV2.self] }
+    static var schemas: [any VersionedSchema.Type] { [SchemaV1.self, SchemaV2.self, SchemaV3.self] }
     static var stages: [MigrationStage] {
-        [.lightweight(fromVersion: SchemaV1.self, toVersion: SchemaV2.self)]
+        [.lightweight(fromVersion: SchemaV1.self, toVersion: SchemaV2.self),
+         .lightweight(fromVersion: SchemaV2.self, toVersion: SchemaV3.self)]
     }
 }
 
 enum CameraLogStore {
-    static let schema = Schema(versionedSchema: SchemaV2.self)
+    static let schema = Schema(versionedSchema: SchemaV3.self)
 
     static func makeContainer(inMemory: Bool = false, url: URL? = nil) throws -> ModelContainer {
         let configuration: ModelConfiguration
@@ -35,11 +37,14 @@ enum CameraLogStore {
 }
 
 /// One main-actor context, explicit commits. Failed writes roll back; never acknowledge an unsaved take.
-@MainActor final class CameraLogRepository {
+/// Views read `revision`: relationship arrays filled through an inverse do not always notify SwiftUI,
+/// so every commit bumps it and the screens showing lists recompute them.
+@Observable @MainActor final class CameraLogRepository {
     // ModelContext does not keep its container alive. The repository must own
     // both so an independently created repository can safely insert models.
     private let container: ModelContainer
     let context: ModelContext
+    private(set) var revision = 0
     init(context: ModelContext) {
         container = context.container
         self.context = context
@@ -47,6 +52,7 @@ enum CameraLogStore {
     }
 
     private func commit() throws {
+        defer { revision += 1 }
         do { try context.save() }
         catch { context.rollback(); throw error }
     }
@@ -118,6 +124,77 @@ enum CameraLogStore {
         report.rolls.first { same($0.name, name) }
     }
 
+    // MARK: Editing productions, days, cameras and rolls
+
+    func updateProduction(_ production: Production, name: String, client: String, director: String,
+                          cinematographer: String, start: Date, end: Date?, projectNumber: String,
+                          notes: String, lensKit: [String], filterKit: [FilterFamily]) throws {
+        let name = try required(name, "Le nom")
+        if let end, end < start { throw LogError.invalid("La fin doit suivre le début.") }
+        production.name = name; production.client = client; production.director = director
+        production.cinematographer = cinematographer; production.startDate = start; production.endDate = end
+        production.projectNumber = projectNumber; production.notes = notes
+        production.lensKit = lensKit
+        production.filterKit = filterKit.compactMap { family in
+            let name = family.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            return name.isEmpty ? nil : FilterFamily(name: name, grades: family.grades)
+        }
+        production.updatedAt = Date(); production.revision += 1
+        try commit()
+    }
+
+    func updateDay(_ day: ShootDay, number: Int, date: Date, location: String, unit: String, notes: String) throws {
+        let others = (day.production?.days ?? []).filter { $0.id != day.id }
+        guard number > 0, !others.contains(where: { $0.number == number }) else {
+            throw LogError.invalid("Le numéro de journée doit être positif et unique dans la production.")
+        }
+        day.number = number; day.date = date; day.location = location; day.unit = unit; day.notes = notes
+        day.updatedAt = Date(); day.revision += 1
+        try commit()
+    }
+
+    func updateCamera(_ camera: Camera, name: String, manufacturer: String, model: String,
+                      serialNumber: String) throws {
+        let name = try required(name, "Le nom caméra")
+        let others = (camera.production?.cameras ?? []).filter { $0.id != camera.id }
+        guard !others.contains(where: { same($0.name, name) }) else {
+            throw LogError.invalid("Cette caméra existe déjà dans la production.")
+        }
+        camera.name = name; camera.manufacturer = manufacturer; camera.model = model
+        camera.serialNumber = serialNumber
+        try commit()
+    }
+
+    /// Adds the next camera letter to the day (A, B, C…), reusing the production camera of that name.
+    @discardableResult func addNextCamera(to day: ShootDay) throws -> CameraReport {
+        guard let production = day.production else { throw LogError.invalid("Production introuvable.") }
+        let used = day.reports.filter { $0.day?.id == day.id }.compactMap { $0.camera?.name }
+        let name = CameraNaming.next(used: used)
+        let camera: Camera
+        if let existing = production.cameras.first(where: { same($0.name, name) }) {
+            camera = existing
+        } else {
+            camera = Camera(name: name, production: production)
+            context.insert(camera)
+        }
+        let report = CameraReport(day: day, camera: camera)
+        context.insert(report)
+        try commit()
+        return report
+    }
+
+    func deleteReport(_ report: CameraReport) throws { context.delete(report); try commit() }
+
+    func updateRoll(_ roll: Roll, name: String, card: String, reel: String) throws {
+        let name = try required(name, "Le roll").uppercased()
+        let others = (roll.report?.rolls ?? []).filter { $0.id != roll.id }
+        if others.contains(where: { same($0.name, name) }) {
+            throw LogError.invalid("Le roll \(name) existe déjà pour cette caméra et cette journée.")
+        }
+        roll.name = name; roll.card = card; roll.reel = reel
+        try commit()
+    }
+
     // MARK: Data recorded before shot sheets
 
     /// Attaches takes recorded with schema 1 to sheets grouped by roll, scene and shot, and gives
@@ -182,7 +259,8 @@ enum CameraLogStore {
     private func suggest(into draft: inout SheetDraft, report: CameraReport, excluding sheet: ShotSheet?) {
         guard let previous = previousSheet(in: report, excluding: sheet) else { return }
         let rollName = previous.roll?.name ?? ""
-        draft.suggestions = SmartFill.suggestions(scene: previous.scene, roll: rollName, settings: previous.settings)
+        draft.suggestions = SmartFill.suggestions(scene: previous.scene, shot: previous.shot,
+                                                  roll: rollName, settings: previous.settings)
         draft.suggestionSource = "la fiche \(previous.title) · \(rollName)"
     }
 
@@ -308,6 +386,14 @@ enum CameraLogStore {
         take.label = TakeLabel.normalized(label)
         take.statusValues = values
         take.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        take.updatedAt = Date(); take.revision += 1; try commit()
+    }
+
+    /// Inline edit of a take box. Statuses, notes and Circle are untouched.
+    func updateLabel(_ take: TakeEntry, label: String) throws {
+        let value = TakeLabel.normalized(label)
+        guard value != take.labelText else { return }
+        take.label = value
         take.updatedAt = Date(); take.revision += 1; try commit()
     }
 

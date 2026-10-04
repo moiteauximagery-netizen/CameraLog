@@ -17,9 +17,22 @@ import SwiftData
     var revision = 1
     @Relationship(deleteRule: .cascade, inverse: \ShootDay.production) var days: [ShootDay] = []
     @Relationship(deleteRule: .cascade, inverse: \Camera.production) var cameras: [Camera] = []
+    // Schema 3: equipment kits. Optional so older stores migrate without inventing values.
+    var lensKitData: Data?
+    var filterKitData: Data?
     init(name: String) {
         id = UUID(); self.name = name; startDate = Date()
         createdAt = Date(); updatedAt = Date(); defaults = CaptureSettings()
+    }
+    /// Focal lengths of the production. Empty: the lens field has no menu.
+    var lensKit: [String] {
+        get { KitCoding.decode([String].self, from: lensKitData) ?? [] }
+        set { lensKitData = KitCoding.encode(newValue) }
+    }
+    /// Filter families. Never edited: the standard kit.
+    var filterKit: [FilterFamily] {
+        get { KitCoding.decode([FilterFamily].self, from: filterKitData) ?? FilterFamily.defaultKit }
+        set { filterKitData = KitCoding.encode(newValue) }
     }
 }
 

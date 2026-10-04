@@ -22,7 +22,11 @@ struct SheetView: View {
     @State private var pendingMove: PendingMove?
     @State private var error: String?
     @State private var feedback = 0
+    @State private var picker: SheetField?
+    @State private var labelTakeID: UUID?
+    @State private var labelDraft = ""
     @FocusState private var focus: SheetField?
+    @FocusState private var labelFocused: Bool
 
     init(report: CameraReport, repository: CameraLogRepository, sheet: ShotSheet?) {
         self.report = report
@@ -31,9 +35,12 @@ struct SheetView: View {
     }
 
     private var isDirty: Bool { draft.savedContent != saved.savedContent }
+    private var lensKit: [String] { report.day?.production?.lensKit ?? [] }
+    private var filterKit: [FilterFamily] { report.day?.production?.filterKit ?? FilterFamily.defaultKit }
     private var nextNumber: Int { sheet.map { repository.nextTakeNumber(in: $0) } ?? 1 }
 
     var body: some View {
+        let _ = repository.revision
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
                 statusHeader
@@ -57,8 +64,22 @@ struct SheetView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Annuler", action: cancel) }
             }
             ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("OK") { focus = nil }
+                if labelTakeID != nil {
+                    ForEach(TakeLabel.quick, id: \.self) { value in
+                        Button(value) { commitLabel(value) }
+                            .bold()
+                            .accessibilityIdentifier("quick-\(value)")
+                    }
+                    Button("Effacer") { commitLabel("") }
+                    Spacer()
+                    Button("Détails") { openDetails() }
+                    Button("OK") { commitLabel(labelDraft) }
+                        .bold()
+                        .accessibilityIdentifier("label-ok")
+                } else {
+                    Spacer()
+                    Button("OK") { focus = nil }
+                }
             }
         }
         .safeAreaInset(edge: .bottom) {
@@ -75,6 +96,7 @@ struct SheetView: View {
             }
         }
         .onAppear(perform: load)
+        .onDisappear { if labelTakeID != nil { commitLabel(labelDraft) } }
         .sheet(item: $editingTake, onDismiss: deletePendingTake) { take in
             TakeDetailView(take: take, repository: repository,
                            onSave: { feedback += 1 }, onDelete: { takeToDelete = take })
@@ -132,9 +154,13 @@ struct SheetView: View {
         let suggestion = draft.suggestion(field) ?? ""
         let pending = draft.isPending(field)
         return VStack(alignment: .leading, spacing: 4) {
-            Text(field.title)
-                .font(.caption2.bold()).foregroundStyle(.orange)
-                .lineLimit(1).minimumScaleFactor(0.7)
+            HStack(spacing: 4) {
+                Text(field.title)
+                    .font(.caption2.bold()).foregroundStyle(.orange)
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                Spacer(minLength: 0)
+                if hasPicker(field) { pickerButton(field) }
+            }
             TextField(field.spokenName, text: $draft[field],
                       prompt: Text(pending ? suggestion : "—").italic())
                 .font(.title3.weight(.semibold)).monospacedDigit()
@@ -218,8 +244,8 @@ struct SheetView: View {
             }
             if takes.isEmpty {
                 Text(sheet == nil
-                     ? "Renseignez scène, plan et roll puis touchez + : la fiche est enregistrée et T01 créée."
-                     : "Aucune prise. Touchez + pour créer \(TakeLabel.code(nextNumber)).")
+                     ? "Renseignez scène, plan et roll puis touchez + : la fiche est enregistrée et la prise 1 créée."
+                     : "Aucune prise. Touchez + pour créer la prise \(nextNumber).")
                     .font(.subheadline).foregroundStyle(.secondary)
             } else {
                 takeGrid(takes)
@@ -268,7 +294,16 @@ struct SheetView: View {
             ForEach(rows.indices, id: \.self) { index in
                 HStack(spacing: 8) {
                     ForEach(rows[index]) { take in
-                        TakeChip(take: take, clip: numbers[take.id], circleMode: circleMode) { tap(take) }
+                        if take.id == labelTakeID {
+                            labelBox(take, clip: numbers[take.id])
+                        } else {
+                            TakeChip(take: take, clip: numbers[take.id], circleMode: circleMode) { tap(take) }
+                                .contextMenu {
+                                    Button("Statuts, commentaire, suppression", systemImage: "info.circle") {
+                                        editingTake = take
+                                    }
+                                }
+                        }
                     }
                     ForEach(0..<(4 - rows[index].count), id: \.self) { _ in
                         Color.clear.frame(maxWidth: .infinity, minHeight: 1)
@@ -348,6 +383,7 @@ struct SheetView: View {
     }
 
     private func addTake() {
+        if labelTakeID != nil { commitLabel(labelDraft) }
         focus = nil
         if sheet == nil || isDirty {
             guard save() else { return }
@@ -369,10 +405,149 @@ struct SheetView: View {
     }
 
     private func toggleCircleMode() {
+        if labelTakeID != nil { commitLabel(labelDraft) }
         circleMode.toggle()
         announce(circleMode
             ? "Mode cerclage activé. Toucher une prise la cercle ou la décercle."
             : "Mode cerclage désactivé. Toucher une prise ouvre son édition.")
+    }
+
+    // MARK: Inline take label
+
+    private func startLabelEdit(_ take: TakeEntry) {
+        if labelTakeID != nil { commitLabel(labelDraft) }
+        focus = nil
+        labelTakeID = take.id
+        labelDraft = take.labelText
+        DispatchQueue.main.async { labelFocused = true }
+    }
+
+    /// Saves the box content: « PU », or « 4PU » typed on take 4. The take number never changes.
+    private func commitLabel(_ text: String) {
+        guard let id = labelTakeID else { return }
+        labelTakeID = nil
+        labelFocused = false
+        guard let take = sheet?.takes.first(where: { $0.id == id }) else { return }
+        do {
+            try repository.updateLabel(take, label: TakeLabel.label(fromTyped: text, number: take.number))
+            feedback += 1
+        } catch { self.error = error.localizedDescription }
+    }
+
+    private func openDetails() {
+        guard let id = labelTakeID, let take = sheet?.takes.first(where: { $0.id == id }) else { return }
+        commitLabel(labelDraft)
+        editingTake = take
+    }
+
+    private func labelBox(_ take: TakeEntry, clip: Int?) -> some View {
+        VStack(spacing: 2) {
+            HStack(spacing: 1) {
+                Text(TakeLabel.code(take.number)).font(.headline).monospacedDigit()
+                TextField("", text: $labelDraft)
+                    .font(.headline)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
+                    .focused($labelFocused)
+                    .submitLabel(.done)
+                    .onSubmit { commitLabel(labelDraft) }
+                    .accessibilityLabel("Libellé de la prise \(take.number)")
+                    .accessibilityIdentifier("take-label-field")
+            }
+            .padding(.horizontal, 8)
+            Text(clip.map(ClipCode.code) ?? "—").font(.caption2.monospaced())
+        }
+        .frame(maxWidth: .infinity, minHeight: 64)
+        .background(Color.orange.opacity(0.25), in: RoundedRectangle(cornerRadius: 10))
+        .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(Color.orange, lineWidth: 2) }
+    }
+
+    // MARK: Quick pickers on the lens, T-stop and filter boxes
+
+    private func hasPicker(_ field: SheetField) -> Bool {
+        switch field {
+        case .lens: return !lensKit.isEmpty
+        case .tStop: return true
+        case .filters: return !filterKit.isEmpty
+        default: return false
+        }
+    }
+
+    private func pickerButton(_ field: SheetField) -> some View {
+        Button { focus = nil; picker = field } label: {
+            Image(systemName: "chevron.down.circle.fill")
+                .font(.title3)
+                .frame(minWidth: 36, minHeight: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.orange)
+        .accessibilityLabel("Choisir \(field.spokenName) dans la liste")
+        .accessibilityIdentifier("picker-\(field.rawValue)")
+        .popover(isPresented: Binding(get: { picker == field }, set: { if !$0 { picker = nil } })) {
+            pickerContent(field)
+                .padding(12)
+                .frame(width: 330)
+                .presentationCompactAdaptation(.popover)
+        }
+    }
+
+    @ViewBuilder private func pickerContent(_ field: SheetField) -> some View {
+        switch field {
+        case .lens:
+            ScrollView {
+                ValueGrid(values: lensKit, columns: 3, selected: { $0 == draft.value(.lens) }) { value in
+                    draft[.lens] = value
+                    picker = nil
+                }
+            }
+            .frame(maxHeight: 360)
+        case .tStop:
+            ScrollView {
+                VStack(spacing: 6) {
+                    ForEach(Aperture.rows, id: \.self) { row in
+                        ValueGrid(values: row, columns: 3, selected: { $0 == draft.value(.tStop) }) { value in
+                            draft[.tStop] = value
+                            picker = nil
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 420)
+        case .filters:
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(draft.value(.filters).isEmpty ? "Aucun filtre" : draft.value(.filters))
+                        .font(.subheadline.bold())
+                        .lineLimit(2)
+                    Spacer()
+                    Button("Aucun") { draft[.filters] = "" }
+                        .buttonStyle(.bordered)
+                    Button("OK") { picker = nil }
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("filters-done")
+                }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(filterKit) { family in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(family.name).font(.caption.bold()).foregroundStyle(.orange)
+                                ValueGrid(values: family.grades.isEmpty ? [family.name] : family.grades, columns: 4,
+                                          idPrefix: family.name,
+                                          selected: { FilterSelection.isSelected(family: family.name,
+                                                      grade: family.grades.isEmpty ? "" : $0, in: draft.value(.filters)) }) { grade in
+                                    draft[.filters] = FilterSelection.apply(family: family.name,
+                                        grade: family.grades.isEmpty ? "" : grade, to: draft.value(.filters))
+                                }
+                            }
+                        }
+                    }
+                }
+                .frame(maxHeight: 380)
+            }
+        default:
+            EmptyView()
+        }
     }
 
     private func announce(_ message: String) {
@@ -382,7 +557,7 @@ struct SheetView: View {
     private func tap(_ take: TakeEntry) {
         do {
             switch try repository.tap(take, mode: circleMode ? .circle : .edit) {
-            case .edit: editingTake = take
+            case .edit: startLabelEdit(take)
             case .toggleCircle: feedback += 1
             }
         } catch { self.error = error.localizedDescription }
@@ -404,10 +579,10 @@ private struct TakeChip: View {
     var body: some View {
         Button(action: action) {
             VStack(spacing: 2) {
-                Text(TakeLabel.code(take.number)).font(.headline).monospacedDigit()
+                Text(TakeLabel.title(number: take.number, label: take.labelText))
+                    .font(.headline).monospacedDigit()
+                    .lineLimit(1).minimumScaleFactor(0.6)
                 Text(clip.map(ClipCode.code) ?? "—").font(.caption2.monospaced())
-                Text(take.labelText.isEmpty ? " " : take.labelText)
-                    .font(.caption2.bold()).lineLimit(1)
             }
             .frame(maxWidth: .infinity, minHeight: 64)
             .foregroundStyle(take.isCircle ? Color.black : Color.primary)
@@ -429,7 +604,7 @@ private struct TakeChip: View {
         .accessibilityLabel(spokenLabel)
         .accessibilityValue(take.isCircle ? "cerclée" : "non cerclée")
         .accessibilityHint(circleMode ? "Mode cerclage : touchez pour cercler ou décercler."
-                           : "Touchez pour modifier le libellé et les informations.")
+                           : "Touchez pour écrire un libellé dans la case, PU ou FC par exemple.")
         .accessibilityIdentifier("take-\(take.number)")
     }
 }
@@ -447,6 +622,45 @@ private extension SheetField {
         switch self {
         case .scene, .shot, .roll: return .characters
         default: return .never
+        }
+    }
+}
+
+/// Buttons laid out in rows, one tap per value. Used by the lens, T-stop and filter pickers.
+private struct ValueGrid: View {
+    let values: [String]
+    let columns: Int
+    var idPrefix = "value"
+    let selected: (String) -> Bool
+    let choose: (String) -> Void
+
+    var body: some View {
+        let rows = stride(from: 0, to: values.count, by: columns).map {
+            Array(values[$0..<min($0 + columns, values.count)])
+        }
+        VStack(spacing: 6) {
+            ForEach(rows.indices, id: \.self) { index in
+                HStack(spacing: 6) {
+                    ForEach(rows[index], id: \.self) { value in
+                        let isOn = selected(value)
+                        Button { choose(value) } label: {
+                            Text(value)
+                                .font(.body.weight(.semibold)).monospacedDigit()
+                                .lineLimit(1).minimumScaleFactor(0.6)
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .foregroundStyle(isOn ? Color.black : Color.primary)
+                                .background(isOn ? Color.orange : Color.gray.opacity(0.2),
+                                            in: RoundedRectangle(cornerRadius: 8))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(isOn ? .isSelected : [])
+                        .accessibilityIdentifier("\(idPrefix)-\(value)")
+                    }
+                    ForEach(0..<(columns - rows[index].count), id: \.self) { _ in
+                        Color.clear.frame(maxWidth: .infinity, minHeight: 1)
+                    }
+                }
+            }
         }
     }
 }

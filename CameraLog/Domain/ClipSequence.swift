@@ -34,15 +34,20 @@ enum ClipSequence {
     }
 }
 
-/// Take order number and free label are distinct: « T03 · PU ».
+/// Take number and free label are distinct; they are shown together: « 4PU », « 2FC ».
 enum TakeLabel {
     static let quick = ["PU", "FC"]
-    static func code(_ number: Int) -> String { String(format: "T%02d", number) }
-    static func title(number: Int, label: String) -> String {
-        label.isEmpty ? code(number) : "\(code(number)) · \(label)"
-    }
+    static func code(_ number: Int) -> String { String(number) }
+    static func title(number: Int, label: String) -> String { code(number) + label }
     static func normalized(_ label: String) -> String {
         String(label.trimmingCharacters(in: .whitespacesAndNewlines).prefix(16))
+    }
+    /// Text typed in a take box. « 4PU » typed on take 4 keeps the label « PU »; the number never changes.
+    static func label(fromTyped text: String, number: Int) -> String {
+        var value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let prefix = code(number)
+        if value.hasPrefix(prefix) { value = String(value.dropFirst(prefix.count)) }
+        return normalized(value)
     }
 }
 

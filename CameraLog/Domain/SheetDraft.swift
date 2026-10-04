@@ -95,10 +95,12 @@ struct SheetDraft: Equatable {
 
 enum SmartFill {
     /// Values of the previous sheet of the same camera report, offered greyed out.
-    /// The plan is never suggested: it changes from one sheet to the next.
-    static func suggestions(scene: String, roll: String, settings: [String: String]) -> [SheetField: String] {
+    /// The plan offered is the next one: 2 → 3, A → B.
+    static func suggestions(scene: String, shot: String, roll: String,
+                            settings: [String: String]) -> [SheetField: String] {
         var result: [SheetField: String] = [:]
         if !scene.isEmpty { result[.scene] = scene }
+        if let next = ShotIncrement.next(after: shot) { result[.shot] = next }
         if !roll.isEmpty { result[.roll] = roll }
         for field in SheetField.settings {
             if let value = settings[field.rawValue], !value.isEmpty { result[field] = value }
