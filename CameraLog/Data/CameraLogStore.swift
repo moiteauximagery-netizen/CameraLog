@@ -186,7 +186,7 @@ enum CameraLogStore {
     func deleteReport(_ report: CameraReport) throws { context.delete(report); try commit() }
 
     func updateRoll(_ roll: Roll, name: String, card: String, reel: String) throws {
-        let name = try required(name, "Le roll").uppercased()
+        let name = try RollNaming.normalized(required(name, "Le roll"), camera: roll.report?.camera?.name)
         let others = (roll.report?.rolls ?? []).filter { $0.id != roll.id }
         if others.contains(where: { same($0.name, name) }) {
             throw LogError.invalid("Le roll \(name) existe déjà pour cette caméra et cette journée.")
@@ -266,7 +266,7 @@ enum CameraLogStore {
 
     /// Clip numbers that saving `rollName` on this sheet would change. Empty when nothing moves.
     func previewRollChange(for sheet: ShotSheet, to rollName: String, in report: CameraReport) -> [ClipChange] {
-        let name = rollName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = RollNaming.normalized(rollName, camera: report.camera?.name)
         guard let source = sheet.roll, !name.isEmpty, !same(source.name, name) else { return [] }
         let moving = sheet.orderedTakes
         guard !moving.isEmpty else { return [] }
@@ -291,7 +291,8 @@ enum CameraLogStore {
                                       in report: CameraReport) throws -> ShotSheet {
         let scene = try required(draft.value(.scene), "La scène")
         let shot = try required(draft.value(.shot), "Le plan")
-        let rollName = try required(draft.value(.roll), "Le roll").uppercased()
+        let rollName = try RollNaming.normalized(required(draft.value(.roll), "Le roll"),
+                                             camera: report.camera?.name)
         var settings = try SheetValidation.normalizedSettings(draft.settingsToSave)
         if let existing {
             // Keep values written by a later version for fields this screen does not show.
@@ -386,6 +387,29 @@ enum CameraLogStore {
         take.label = TakeLabel.normalized(label)
         take.statusValues = values
         take.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        take.updatedAt = Date(); take.revision += 1; try commit()
+    }
+
+    /// Full rewrite of a take box: « 4PU », « FC », « 12 ». Clip order, statuses and Circle are untouched.
+    func renameTake(_ take: TakeEntry, typed text: String) throws {
+        guard let parsed = TakeLabel.parse(text) else { return }
+        try setTake(take, number: parsed.number, label: parsed.label)
+    }
+
+    /// Long-press shortcuts: FC removes the take number, PU keeps it, an empty label clears it.
+    func applyQuickLabel(_ take: TakeEntry, _ label: String) throws {
+        if label == TakeLabel.falseClip { try setTake(take, number: 0, label: label) }
+        else { try setTake(take, number: take.number, label: label) }
+    }
+
+    private func setTake(_ take: TakeEntry, number: Int, label: String) throws {
+        let label = TakeLabel.normalized(label)
+        if number > 0, let sheet = take.sheet,
+           sheet.takes.contains(where: { $0.id != take.id && $0.number == number }) {
+            throw LogError.duplicateTake
+        }
+        guard number != take.number || label != take.labelText else { return }
+        take.number = number; take.label = label
         take.updatedAt = Date(); take.revision += 1; try commit()
     }
 

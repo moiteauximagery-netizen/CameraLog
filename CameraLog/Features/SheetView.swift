@@ -25,6 +25,9 @@ struct SheetView: View {
     @State private var picker: SheetField?
     @State private var labelTakeID: UUID?
     @State private var labelDraft = ""
+    @State private var saveTask: Task<Void, Never>?
+    @State private var saveIssue: String?
+    @State private var takePendingDeletion: TakeEntry?
     @FocusState private var focus: SheetField?
     @FocusState private var labelFocused: Bool
 
@@ -38,6 +41,14 @@ struct SheetView: View {
     private var lensKit: [String] { report.day?.production?.lensKit ?? [] }
     private var filterKit: [FilterFamily] { report.day?.production?.filterKit ?? FilterFamily.defaultKit }
     private var nextNumber: Int { sheet.map { repository.nextTakeNumber(in: $0) } ?? 1 }
+    private var rollPrefix: String? { RollNaming.prefix(forCamera: report.camera?.name) }
+    private var isComplete: Bool { SheetField.identification.allSatisfy { !draft.value($0).isEmpty } }
+    /// Leaving would lose typed values that cannot be saved yet.
+    private var leavingLosesChanges: Bool { isDirty && (!isComplete || saveIssue != nil) }
+    private var rollSuffix: Binding<String> {
+        Binding(get: { RollNaming.suffix(of: draft[.roll], prefix: rollPrefix) },
+                set: { draft[.roll] = RollNaming.compose(prefix: rollPrefix, suffix: $0) })
+    }
 
     var body: some View {
         let _ = repository.revision
@@ -58,19 +69,21 @@ struct SheetView: View {
         .scrollDismissesKeyboard(.interactively)
         .navigationTitle(sheet == nil ? "Nouvelle fiche" : "\(saved.value(.scene)) / \(saved.value(.shot))")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(isDirty)
+        .navigationBarBackButtonHidden(leavingLosesChanges)
         .toolbar {
-            if isDirty {
-                ToolbarItem(placement: .cancellationAction) { Button("Annuler", action: cancel) }
+            if leavingLosesChanges {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(sheet == nil ? "Abandonner" : "Rétablir", action: cancel)
+                }
             }
             ToolbarItemGroup(placement: .keyboard) {
                 if labelTakeID != nil {
                     ForEach(TakeLabel.quick, id: \.self) { value in
-                        Button(value) { commitLabel(value) }
+                        Button(value) { quickLabelForEditedTake(value) }
                             .bold()
                             .accessibilityIdentifier("quick-\(value)")
                     }
-                    Button("Effacer") { commitLabel("") }
+                    Button("Effacer") { quickLabelForEditedTake("") }
                     Spacer()
                     Button("Détails") { openDetails() }
                     Button("OK") { commitLabel(labelDraft) }
@@ -82,21 +95,18 @@ struct SheetView: View {
                 }
             }
         }
-        .safeAreaInset(edge: .bottom) {
-            if isDirty {
-                Button { save() } label: {
-                    Label(sheet == nil ? "ENREGISTRER LA FICHE" : "ENREGISTRER LES MODIFICATIONS",
-                          systemImage: "checkmark")
-                        .font(.headline).frame(maxWidth: .infinity, minHeight: 52)
-                }
-                .buttonStyle(.borderedProminent)
-                .accessibilityIdentifier("save-sheet")
-                .padding(.horizontal).padding(.vertical, 8)
-                .background(.bar)
-            }
-        }
         .onAppear(perform: load)
-        .onDisappear { if labelTakeID != nil { commitLabel(labelDraft) } }
+        .onDisappear {
+            if labelTakeID != nil { commitLabel(labelDraft) }
+            saveTask?.cancel()
+            focus = nil
+            autosave()
+        }
+        .onChange(of: draft.savedContent) { _, _ in scheduleAutosave() }
+        .onChange(of: focus) { old, new in
+            // Scene, plan and roll are saved when their box is left, never mid-typing.
+            if let old, SheetField.identification.contains(old), old != new { autosave() }
+        }
         .sheet(item: $editingTake, onDismiss: deletePendingTake) { take in
             TakeDetailView(take: take, repository: repository,
                            onSave: { feedback += 1 }, onDelete: { takeToDelete = take })
@@ -113,9 +123,23 @@ struct SheetView: View {
                 pendingMove = nil
                 save(confirmedMove: true)
             }
-            Button("Annuler", role: .cancel) { pendingMove = nil }
+            Button("Annuler", role: .cancel) {
+                pendingMove = nil
+                draft[.roll] = saved[.roll]
+            }
         } message: { move in
             Text("Les prises de cette fiche changent de carte :\n" + ClipSequence.summary(move.changes))
+        }
+        .confirmationDialog("Supprimer cette prise ?", isPresented: Binding(
+            get: { takePendingDeletion != nil }, set: { if !$0 { takePendingDeletion = nil } }
+        ), titleVisibility: .visible, presenting: takePendingDeletion) { take in
+            Button("Supprimer la prise", role: .destructive) {
+                takePendingDeletion = nil
+                do { try repository.deleteTake(take); feedback += 1 }
+                catch { self.error = error.localizedDescription }
+            }
+        } message: { take in
+            Text(deletionMessage(take))
         }
         .sensoryFeedback(.success, trigger: feedback)
         .logError($error)
@@ -127,8 +151,10 @@ struct SheetView: View {
         HStack(spacing: 6) {
             Text("DAY \(report.day?.number ?? 0) · CAM \(report.camera?.name ?? "—")")
             Spacer()
-            Label(stateText, systemImage: isDirty ? "pencil.circle.fill" : "checkmark.circle")
-                .foregroundStyle(isDirty ? Color.orange : Color.secondary)
+            Label(stateText, systemImage: saveIssue != nil ? "exclamationmark.circle.fill"
+                  : (isDirty ? "pencil.circle.fill" : "checkmark.circle"))
+                .foregroundStyle(saveIssue != nil || isDirty ? Color.orange : Color.secondary)
+                .lineLimit(2)
                 .accessibilityIdentifier("sheet-state")
         }
         .font(.caption.bold())
@@ -136,10 +162,11 @@ struct SheetView: View {
     }
 
     private var stateText: String {
+        if let saveIssue { return "Non enregistré : \(saveIssue)" }
         switch (sheet == nil, isDirty) {
         case (true, false): return "Rien d’enregistré"
-        case (true, true): return "Non enregistrée"
-        case (false, true): return "Modifications non enregistrées"
+        case (true, true): return isComplete ? "Enregistrement…" : "Scène, plan et roll requis"
+        case (false, true): return "Enregistrement…"
         case (false, false): return "Fiche enregistrée"
         }
     }
@@ -161,15 +188,21 @@ struct SheetView: View {
                 Spacer(minLength: 0)
                 if hasPicker(field) { pickerButton(field) }
             }
-            TextField(field.spokenName, text: $draft[field],
-                      prompt: Text(pending ? suggestion : "—").italic())
-                .font(.title3.weight(.semibold)).monospacedDigit()
-                .keyboardType(field.keyboard)
-                .textInputAutocapitalization(field.capitalization)
-                .autocorrectionDisabled()
-                .focused($focus, equals: field)
-                .accessibilityIdentifier("field-\(field.rawValue)")
-                .accessibilityHint(pending ? "Suggestion non enregistrée : \(suggestion)." : "")
+            HStack(spacing: 1) {
+                if field == .roll, let rollPrefix {
+                    Text(rollPrefix).font(.title3.weight(.semibold)).foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                }
+                TextField(field.spokenName, text: field == .roll && rollPrefix != nil ? rollSuffix : $draft[field],
+                          prompt: Text(pending ? displayed(suggestion, for: field) : "—").italic())
+                    .font(.title3.weight(.semibold)).monospacedDigit()
+                    .keyboardType(field.keyboard)
+                    .textInputAutocapitalization(field.capitalization)
+                    .autocorrectionDisabled()
+                    .focused($focus, equals: field)
+                    .accessibilityIdentifier("field-\(field.rawValue)")
+                    .accessibilityHint(pending ? "Suggestion non enregistrée : \(suggestion)." : "")
+            }
             if pending {
                 Button { draft.accept(field) } label: {
                     Label("Reprendre", systemImage: "arrow.down.left")
@@ -250,10 +283,6 @@ struct SheetView: View {
             } else {
                 takeGrid(takes)
             }
-            if isDirty && sheet != nil {
-                Text("+ enregistre aussi les modifications de la fiche ; les prises existantes gardent leurs réglages.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
             if sheet != nil && !circleMode {
                 Button { inserting = true } label: {
                     Label("Insérer une prise oubliée…", systemImage: "text.insert")
@@ -299,8 +328,13 @@ struct SheetView: View {
                         } else {
                             TakeChip(take: take, clip: numbers[take.id], circleMode: circleMode) { tap(take) }
                                 .contextMenu {
-                                    Button("Statuts, commentaire, suppression", systemImage: "info.circle") {
-                                        editingTake = take
+                                    ForEach(TakeLabel.quick, id: \.self) { value in
+                                        Button(value) { quickLabel(take, value) }
+                                    }
+                                    Button("Effacer le libellé", systemImage: "eraser") { quickLabel(take, "") }
+                                    Button("Détails…", systemImage: "info.circle") { editingTake = take }
+                                    Button("Supprimer", systemImage: "trash", role: .destructive) {
+                                        takePendingDeletion = take
                                     }
                                 }
                         }
@@ -354,12 +388,44 @@ struct SheetView: View {
 
     private func cancel() {
         focus = nil
+        saveTask?.cancel()
+        saveIssue = nil
         if sheet == nil { dismiss(); return }
         draft.values = saved.values
         draft.notes = saved.notes
     }
 
-    @discardableResult private func save(confirmedMove: Bool = false) -> Bool {
+    private func displayed(_ suggestion: String, for field: SheetField) -> String {
+        field == .roll ? RollNaming.suffix(of: suggestion, prefix: rollPrefix) : suggestion
+    }
+
+    // MARK: Automatic saving
+
+    private func scheduleAutosave() {
+        guard loaded else { return }
+        saveTask?.cancel()
+        saveTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            guard !Task.isCancelled else { return }
+            autosave()
+        }
+    }
+
+    /// Saves typed and accepted values without a button. Never while scene, plan or roll is being typed.
+    private func autosave() {
+        guard loaded, isDirty, pendingMove == nil else {
+            if !isDirty { saveIssue = nil }
+            return
+        }
+        if let focus, SheetField.identification.contains(focus) { return }
+        guard isComplete else {
+            saveIssue = sheet == nil ? nil : "scène, plan et roll sont obligatoires"
+            return
+        }
+        save(interactive: false)
+    }
+
+    @discardableResult private func save(confirmedMove: Bool = false, interactive: Bool = true) -> Bool {
         if let sheet, !confirmedMove {
             let changes = repository.previewRollChange(for: sheet, to: draft.value(.roll), in: report)
             if !changes.isEmpty { pendingMove = PendingMove(changes: changes); return false }
@@ -374,10 +440,11 @@ struct SheetView: View {
             sheet = result
             draft = reloaded
             saved = reloaded
-            feedback += 1
+            saveIssue = nil
             return true
         } catch {
-            self.error = error.localizedDescription
+            if interactive { self.error = error.localizedDescription }
+            else { saveIssue = error.localizedDescription }
             return false
         }
     }
@@ -385,6 +452,7 @@ struct SheetView: View {
     private func addTake() {
         if labelTakeID != nil { commitLabel(labelDraft) }
         focus = nil
+        saveTask?.cancel()
         if sheet == nil || isDirty {
             guard save() else { return }
         }
@@ -418,20 +486,40 @@ struct SheetView: View {
         if labelTakeID != nil { commitLabel(labelDraft) }
         focus = nil
         labelTakeID = take.id
-        labelDraft = take.labelText
+        labelDraft = TakeLabel.title(number: take.number, label: take.labelText)
+            .replacingOccurrences(of: "—", with: "")
         DispatchQueue.main.async { labelFocused = true }
     }
 
-    /// Saves the box content: « PU », or « 4PU » typed on take 4. The take number never changes.
+    /// Saves the box content as typed: « 4PU », « FC » (no take number), « 12 ».
     private func commitLabel(_ text: String) {
         guard let id = labelTakeID else { return }
         labelTakeID = nil
         labelFocused = false
         guard let take = sheet?.takes.first(where: { $0.id == id }) else { return }
         do {
-            try repository.updateLabel(take, label: TakeLabel.label(fromTyped: text, number: take.number))
+            try repository.renameTake(take, typed: text)
             feedback += 1
         } catch { self.error = error.localizedDescription }
+    }
+
+    /// Keyboard and long-press shortcuts: PU keeps the number, FC removes it, empty clears the label.
+    private func quickLabel(_ take: TakeEntry, _ value: String) {
+        if labelTakeID == take.id { labelTakeID = nil; labelFocused = false }
+        do { try repository.applyQuickLabel(take, value); feedback += 1 }
+        catch { self.error = error.localizedDescription }
+    }
+
+    private func quickLabelForEditedTake(_ value: String) {
+        guard let id = labelTakeID, let take = sheet?.takes.first(where: { $0.id == id }) else { return }
+        quickLabel(take, value)
+    }
+
+    private func deletionMessage(_ take: TakeEntry) -> String {
+        let changes = repository.previewDeletion(of: take)
+        let impact = changes.isEmpty ? "Aucun autre numéro de clip ne change."
+            : "Clips renumérotés :\n" + ClipSequence.summary(changes)
+        return impact + "\n\nSi ce clip existe sur la caméra, préférez le libellé FC."
     }
 
     private func openDetails() {
@@ -443,7 +531,6 @@ struct SheetView: View {
     private func labelBox(_ take: TakeEntry, clip: Int?) -> some View {
         VStack(spacing: 2) {
             HStack(spacing: 1) {
-                Text(TakeLabel.code(take.number)).font(.headline).monospacedDigit()
                 TextField("", text: $labelDraft)
                     .font(.headline)
                     .textInputAutocapitalization(.characters)
@@ -451,7 +538,8 @@ struct SheetView: View {
                     .focused($labelFocused)
                     .submitLabel(.done)
                     .onSubmit { commitLabel(labelDraft) }
-                    .accessibilityLabel("Libellé de la prise \(take.number)")
+                    .multilineTextAlignment(.center)
+                    .accessibilityLabel("Texte de la case, numéro de prise et libellé")
                     .accessibilityIdentifier("take-label-field")
             }
             .padding(.horizontal, 8)
@@ -573,7 +661,8 @@ private struct TakeChip: View {
     private var spokenLabel: String {
         let code = clip.map(ClipCode.code) ?? "inconnu"
         let label = take.labelText
-        return label.isEmpty ? "Prise \(take.number), clip \(code)" : "Prise \(take.number), clip \(code), libellé \(label)"
+        let name = take.number > 0 ? "Prise \(take.number)" : "Sans numéro de prise"
+        return label.isEmpty ? "\(name), clip \(code)" : "\(name), clip \(code), libellé \(label)"
     }
 
     var body: some View {
@@ -604,8 +693,8 @@ private struct TakeChip: View {
         .accessibilityLabel(spokenLabel)
         .accessibilityValue(take.isCircle ? "cerclée" : "non cerclée")
         .accessibilityHint(circleMode ? "Mode cerclage : touchez pour cercler ou décercler."
-                           : "Touchez pour écrire un libellé dans la case, PU ou FC par exemple.")
-        .accessibilityIdentifier("take-\(take.number)")
+                           : "Touchez pour réécrire la case. Appui long : PU, FC, détails, suppression.")
+        .accessibilityIdentifier("take-\(clip.map(ClipCode.code) ?? take.id.uuidString)")
     }
 }
 
@@ -614,6 +703,7 @@ private extension SheetField {
         switch self {
         case .iso, .whiteBalance: return .numberPad
         case .fps, .shutter: return .decimalPad
+        case .roll: return .numbersAndPunctuation
         default: return .default
         }
     }

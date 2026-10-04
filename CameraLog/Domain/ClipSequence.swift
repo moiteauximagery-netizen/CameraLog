@@ -34,11 +34,26 @@ enum ClipSequence {
     }
 }
 
-/// Take number and free label are distinct; they are shown together: « 4PU », « 2FC ».
+/// Take number and free label are distinct; they are shown together: « 4PU ».
+/// Number 0 means « no take number »: a false clip typed « FC » frees its number for the next take.
 enum TakeLabel {
     static let quick = ["PU", "FC"]
+    static let falseClip = "FC"
     static func code(_ number: Int) -> String { String(number) }
-    static func title(number: Int, label: String) -> String { code(number) + label }
+    static func title(number: Int, label: String) -> String {
+        if number > 0 { return code(number) + label }
+        return label.isEmpty ? "—" : label
+    }
+    /// Full text typed in a take box: « 4PU » → (4, PU), « FC » → (0, FC), « 12 » → (12, ""). Empty: nil.
+    static func parse(_ text: String) -> (number: Int, label: String)? {
+        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return nil }
+        let digits = String(value.prefix { $0.isASCII && $0.isNumber })
+        if let number = Int(digits), number > 0, number < 1000 {
+            return (number, normalized(String(value.dropFirst(digits.count))))
+        }
+        return (0, normalized(value))
+    }
     static func normalized(_ label: String) -> String {
         String(label.trimmingCharacters(in: .whitespacesAndNewlines).prefix(16))
     }

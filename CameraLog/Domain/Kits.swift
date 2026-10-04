@@ -146,3 +146,35 @@ enum KitCoding {
         return try? JSONDecoder().decode(type, from: data)
     }
 }
+
+/// A roll starts with its camera letter: on CAM A only « 001 » is typed and « A001 » is stored.
+enum RollNaming {
+    /// The imposed prefix: the camera name when it is a single letter, otherwise none.
+    static func prefix(forCamera name: String?) -> String? {
+        guard let value = name?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased(),
+              value.count == 1, let letter = value.first, letter.isLetter else { return nil }
+        return value
+    }
+
+    /// What the ROLL box shows after the fixed prefix.
+    static func suffix(of name: String, prefix: String?) -> String {
+        guard let prefix, name.uppercased().hasPrefix(prefix) else { return name }
+        return String(name.dropFirst(prefix.count))
+    }
+
+    /// Full roll name from the box. An empty box stays empty; « A011 » typed in full is kept.
+    static func compose(prefix: String?, suffix: String) -> String {
+        let value = suffix.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let prefix, !value.isEmpty else { return value }
+        return value.uppercased().hasPrefix(prefix) ? value : prefix + value
+    }
+
+    /// Stored form: upper case, and A1 / A12 completed to A001 / A012 on a lettered camera.
+    static func normalized(_ name: String, camera: String?) -> String {
+        let upper = name.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard let prefix = prefix(forCamera: camera), upper.hasPrefix(prefix) else { return upper }
+        let rest = upper.dropFirst(prefix.count)
+        guard !rest.isEmpty, rest.count < 3, rest.allSatisfy({ $0.isASCII && $0.isNumber }) else { return upper }
+        return prefix + String(repeating: "0", count: 3 - rest.count) + rest
+    }
+}

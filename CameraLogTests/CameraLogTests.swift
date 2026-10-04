@@ -622,6 +622,68 @@ import SwiftData
         XCTAssertEqual(take.revision, revision + 1, "Unchanged label: nothing written")
     }
 
+    func testRollLetterIsImposedByTheCamera() throws {
+        XCTAssertEqual(RollNaming.prefix(forCamera: "a"), "A")
+        XCTAssertNil(RollNaming.prefix(forCamera: "Drone"))
+        XCTAssertEqual(RollNaming.suffix(of: "A010", prefix: "A"), "010")
+        XCTAssertEqual(RollNaming.suffix(of: "B12", prefix: "A"), "B12")
+        XCTAssertEqual(RollNaming.compose(prefix: "A", suffix: "011"), "A011")
+        XCTAssertEqual(RollNaming.compose(prefix: "A", suffix: "a011"), "a011")
+        XCTAssertEqual(RollNaming.compose(prefix: "A", suffix: " "), "")
+        XCTAssertEqual(RollNaming.normalized("a1", camera: "A"), "A001")
+        XCTAssertEqual(RollNaming.normalized("A12", camera: "A"), "A012")
+        XCTAssertEqual(RollNaming.normalized("A0105", camera: "A"), "A0105")
+        XCTAssertEqual(RollNaming.normalized("x7", camera: "Drone"), "X7")
+
+        let (_, repo) = try setupStore()
+        let (_, report) = try report(repo)
+        var draft = sheetDraft("14", "A", roll: RollNaming.compose(prefix: "A", suffix: "1"))
+        let sheet = try repo.saveSheet(draft, sheet: nil, in: report)
+        XCTAssertEqual(sheet.roll?.name, "A001")
+        draft = sheetDraft("14", "B", roll: "A001")
+        XCTAssertEqual(try repo.saveSheet(draft, sheet: nil, in: report).roll?.id, sheet.roll?.id)
+        XCTAssertEqual(report.rolls.count, 1)
+    }
+
+    func testTakeBoxCanBeRewrittenEntirely() throws {
+        XCTAssertEqual(TakeLabel.parse("4PU")?.number, 4); XCTAssertEqual(TakeLabel.parse("4PU")?.label, "PU")
+        XCTAssertEqual(TakeLabel.parse("FC")?.number, 0); XCTAssertEqual(TakeLabel.parse("FC")?.label, "FC")
+        XCTAssertEqual(TakeLabel.parse(" 12 ")?.number, 12); XCTAssertEqual(TakeLabel.parse("12")?.label, "")
+        XCTAssertNil(TakeLabel.parse("  "))
+        XCTAssertEqual(TakeLabel.title(number: 0, label: "FC"), "FC")
+        XCTAssertEqual(TakeLabel.title(number: 0, label: ""), "—")
+
+        let (_, repo) = try setupStore()
+        let (_, report) = try report(repo)
+        let sheet = try repo.saveSheet(sheetDraft("14", "A", roll: "A010"), sheet: nil, in: report)
+        try repo.addNextTake(to: sheet)
+        let falseClip = try repo.addNextTake(to: sheet)
+        try repo.toggleCircle(falseClip)
+        try repo.renameTake(falseClip, typed: "FC")
+        XCTAssertEqual(falseClip.number, 0, "A false clip frees its take number")
+        XCTAssertEqual(falseClip.labelText, "FC")
+        XCTAssertTrue(falseClip.isCircle, "Circle is independent")
+        XCTAssertEqual(falseClip.roll?.clipNumbers[falseClip.id], 2, "The clip keeps its place on the card")
+        let next = try repo.addNextTake(to: sheet)
+        XCTAssertEqual(next.number, 2, "The next take takes back the freed number")
+        XCTAssertEqual(next.roll?.clipNumbers[next.id], 3)
+
+        XCTAssertThrowsError(try repo.renameTake(falseClip, typed: "2"), "Duplicate take number")
+        XCTAssertEqual(falseClip.number, 0)
+        try repo.renameTake(next, typed: "2PU")
+        XCTAssertEqual(TakeLabel.title(number: next.number, label: next.labelText), "2PU")
+        try repo.renameTake(next, typed: "   ")
+        XCTAssertEqual(next.labelText, "PU", "An empty box changes nothing")
+
+        try repo.applyQuickLabel(next, "FC")
+        XCTAssertEqual(next.number, 0)
+        try repo.renameTake(next, typed: "3")
+        try repo.applyQuickLabel(next, "PU")
+        XCTAssertEqual(next.number, 3); XCTAssertEqual(next.labelText, "PU")
+        try repo.applyQuickLabel(next, "")
+        XCTAssertEqual(TakeLabel.title(number: next.number, label: next.labelText), "3")
+    }
+
     func testSampleData() throws {
         let (container, repo) = try setupStore()
         try SampleData.load(into: repo)

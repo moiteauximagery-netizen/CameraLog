@@ -48,27 +48,23 @@ final class CameraLogUITests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         row.tap()
 
-        let first = app.buttons["take-1"]
+        let first = app.buttons["take-C001"]
         XCTAssertTrue(first.waitForExistence(timeout: 5))
         if !first.isHittable { app.swipeUp() }
         attach(app, "2 Fiche 24-03")
         wait(first, value: "non cerclée")
-        wait(app.buttons["take-2"], value: "cerclée")
+        wait(app.buttons["take-C002"], value: "cerclée")
 
-        // Normal mode: touching a take turns its box into a text field, no page opens.
+        // Normal mode: touching a take turns its box into a text field holding « 1 ».
         first.tap()
         let field = app.textFields["take-label-field"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
+        wait(field, value: "1")
         attach(app, "3 Édition dans la case")
-        let quick = app.buttons["quick-FC"]
-        if quick.waitForExistence(timeout: 2) {
-            quick.tap()
-        } else {
-            field.tap()
-            field.typeText("1FC\n")
-        }
+        field.tap()
+        field.typeText("PU\n")
         XCTAssertTrue(field.waitForNonExistence(timeout: 5))
-        wait(first, labelContains: "FC")
+        wait(first, labelContains: "Prise 1, clip C001, libellé PU")
         wait(first, value: "non cerclée")
 
         // Circle mode: touching toggles Circle immediately, without editing.
@@ -81,41 +77,38 @@ final class CameraLogUITests: XCTestCase {
         attach(app, "4 Mode cerclage")
         first.tap()
         wait(first, value: "non cerclée")
-        XCTAssertTrue(first.label.contains("FC"), "Circle does not change the label")
+        XCTAssertTrue(first.label.contains("PU"), "Circle does not change the label")
 
-        // Leaving circle mode restores editing in the box.
+        // Leaving circle mode: the whole box can be rewritten, number included.
         mode.tap()
         wait(mode, value: "désactivé")
         first.tap()
-        XCTAssertTrue(app.textFields["take-label-field"].waitForExistence(timeout: 5))
-        app.textFields["take-label-field"].typeText("\n")
-        XCTAssertTrue(app.textFields["take-label-field"].waitForNonExistence(timeout: 5))
-        XCTAssertTrue(first.label.contains("FC"))
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 4) + "FC\n")
+        XCTAssertTrue(field.waitForNonExistence(timeout: 5))
+        wait(first, labelContains: "Sans numéro de prise, clip C001, libellé FC")
 
         // + creates the next take of the sheet and the next clip of the card (24/04 holds C004).
         app.buttons["add-take"].tap()
-        let fourth = app.buttons["take-4"]
-        XCTAssertTrue(fourth.waitForExistence(timeout: 5))
-        XCTAssertTrue(fourth.label.contains("C005"), fourth.label)
+        let added = app.buttons["take-C005"]
+        XCTAssertTrue(added.waitForExistence(timeout: 5))
+        XCTAssertTrue(added.label.contains("Prise 4"), added.label)
         attach(app, "5 Prise 4 ajoutée")
 
-        // Details stay reachable with a long press: delete take 4 after confirmation.
-        fourth.press(forDuration: 1.0)
-        let details = app.buttons["Statuts, commentaire, suppression"]
-        XCTAssertTrue(details.waitForExistence(timeout: 5))
-        details.tap()
-        XCTAssertTrue(app.navigationBars["4"].waitForExistence(timeout: 5))
-        let deleteButton = app.buttons["Supprimer cette prise"]
-        for _ in 0..<6 where !(deleteButton.exists && deleteButton.isHittable) { app.swipeUp() }
-        deleteButton.tap()
-        let confirm = app.buttons["Supprimer"].firstMatch
+        // Long press: quick labels and deletion after confirmation.
+        added.press(forDuration: 1.0)
+        XCTAssertTrue(app.buttons["PU"].waitForExistence(timeout: 5))
+        attach(app, "6 Menu appui long")
+        app.buttons["Supprimer"].tap()
+        let confirm = app.buttons["Supprimer la prise"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 5))
         confirm.tap()
-        XCTAssertTrue(fourth.waitForNonExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["take-3"].exists)
+        XCTAssertTrue(added.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["take-C003"].exists)
     }
 
-    @MainActor func testNewSheetSuggestionsAndQuickPickers() throws {
+    @MainActor func testNewSheetSuggestionsPickersAndAutomaticSaving() throws {
         let app = openReport()
         app.buttons["new-sheet"].tap()
         let acceptAll = app.buttons["accept-all"]
@@ -124,7 +117,8 @@ final class CameraLogUITests: XCTestCase {
         XCTAssertTrue(app.buttons["accept-shot"].exists, "The next plan is proposed")
         XCTAssertTrue(app.descendants(matching: .any)["sheet-state"].firstMatch.label.contains("Rien"))
         XCTAssertFalse(app.buttons["picker-lens"].exists, "No lens series in the sample: no menu")
-        attach(app, "6 Nouvelle fiche, suggestions en gris")
+        XCTAssertFalse(app.buttons["save-sheet"].exists, "No save button any more")
+        attach(app, "7 Nouvelle fiche, suggestions en gris")
 
         app.buttons["accept-lens"].tap()
         XCTAssertTrue(app.buttons["accept-lens"].waitForNonExistence(timeout: 5))
@@ -134,7 +128,7 @@ final class CameraLogUITests: XCTestCase {
         app.buttons["picker-tStop"].tap()
         let third = app.buttons["value-2.8 ⅓"]
         XCTAssertTrue(third.waitForExistence(timeout: 5))
-        attach(app, "7 Menu diaph")
+        attach(app, "8 Menu diaph")
         third.tap()
         wait(app.textFields["field-tStop"], value: "2.8 ⅓")
 
@@ -144,13 +138,25 @@ final class CameraLogUITests: XCTestCase {
         app.buttons["ND-0.6"].tap()
         app.buttons["BPM-1/4"].tap()
         app.buttons["ND-0.9"].tap()
-        attach(app, "8 Menu filtres")
+        attach(app, "9 Menu filtres")
         app.buttons["filters-done"].tap()
         wait(app.textFields["field-filters"], value: "ND 0.9 + BPM 1/4")
 
+        // Tout reprendre fills scene, plan 05 and roll: the roll box shows only 004 after the A.
         acceptAll.tap()
         XCTAssertTrue(app.buttons["accept-all"].waitForNonExistence(timeout: 5))
-        attach(app, "9 Tout reprendre")
+        wait(app.textFields["field-roll"], value: "004")
+        let state = app.descendants(matching: .any)["sheet-state"].firstMatch
+        wait(state, labelContains: "Fiche enregistrée")
+        attach(app, "10 Enregistrée automatiquement")
+
+        // Saved without a button: back to the list and reopen.
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let saved = app.buttons["sheet-24-05"]
+        XCTAssertTrue(saved.waitForExistence(timeout: 5))
+        saved.tap()
+        wait(app.textFields["field-tStop"], value: "2.8 ⅓")
+        wait(app.textFields["field-filters"], value: "ND 0.9 + BPM 1/4")
     }
 
     @MainActor func testNewCameraAndDayEditsAppearImmediately() throws {
