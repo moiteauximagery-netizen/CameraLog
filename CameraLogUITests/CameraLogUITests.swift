@@ -159,6 +159,35 @@ final class CameraLogUITests: XCTestCase {
         wait(app.textFields["field-filters"], value: "ND 0.9 + BPM 1/4")
     }
 
+    @MainActor func testProjectSearchWithFiltersAndTakesMode() throws {
+        let app = launch()
+        let production = app.buttons["production-LES OMBRES"]
+        XCTAssertTrue(production.waitForExistence(timeout: 15))
+        production.tap()
+
+        let status = app.buttons["facet-status"]
+        XCTAssertTrue(status.waitForExistence(timeout: 5))
+        attach(app, "12 Page projet avec filtres")
+        status.tap()
+        let circle = app.buttons["option-Circle"]
+        XCTAssertTrue(circle.waitForExistence(timeout: 5))
+        circle.tap()
+        attach(app, "13 Filtre statut")
+        app.buttons["facet-done"].tap()
+
+        XCTAssertTrue(app.buttons["result-sheet-24-03"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["result-sheet-24-04"].exists)
+        wait(app.staticTexts["results-count"], labelContains: "1 fiche(s) · 1 prise(s) · 1 cerclée(s)")
+        attach(app, "14 Résultats fiches")
+
+        app.buttons["Prises"].tap()
+        let take = app.buttons["result-take-A004-C002"]
+        XCTAssertTrue(take.waitForExistence(timeout: 5))
+        attach(app, "15 Résultats prises")
+        take.tap()
+        XCTAssertTrue(app.buttons["take-C002"].waitForExistence(timeout: 5), "The sheet opens directly")
+    }
+
     @MainActor func testNewCameraAndDayEditsAppearImmediately() throws {
         let app = launch()
         let production = app.buttons["production-LES OMBRES"]

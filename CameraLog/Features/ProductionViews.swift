@@ -235,9 +235,49 @@ struct ProductionDetailView: View {
     let repository: CameraLogRepository
     @State private var addingDay = false
     @State private var editing = false
+    @State private var filters = SearchFilters()
+    @State private var facetPicker: SearchFacet?
+    @State private var showTakes = false
     var body: some View {
         let _ = repository.revision
+        let result = ProjectSearch.run(production, filters: filters)
         List {
+            Section {
+                FilterChipsRow(filters: $filters) { facetPicker = $0 }
+                    .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
+                if filters.isActive {
+                    Picker("Afficher", selection: $showTakes) {
+                        Text("Fiches").tag(false)
+                        Text("Prises").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("results-mode")
+                    Text("\(result.hits.count) fiche(s) · \(result.takeCount) prise(s) · \(result.circleCount) cerclée(s)")
+                        .font(.subheadline.bold()).monospacedDigit()
+                        .accessibilityIdentifier("results-count")
+                }
+            }
+            if filters.isActive {
+                SearchResultsSections(result: result, showTakes: showTakes, repository: repository)
+            } else {
+                projectSections
+            }
+        }
+        .searchable(text: $filters.text, prompt: "Plan, roll, objectif, PU, note…")
+        .navigationTitle(production.name)
+        .toolbar {
+            Button("Réglages", systemImage: "slider.horizontal.3") { editing = true }
+                .accessibilityIdentifier("edit-production")
+        }
+        .sheet(item: $facetPicker) { facet in
+            FacetPicker(facet: facet, options: result.options[facet] ?? [], filters: $filters)
+                .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $addingDay) { DayEditor(production: production, day: nil, repository: repository) }
+        .sheet(isPresented: $editing) { ProductionEditor(repository: repository, production: production) }
+    }
+
+    @ViewBuilder private var projectSections: some View {
             Section("Journées") {
                 ForEach(production.days.sorted { $0.number < $1.number }) { day in
                     NavigationLink {
@@ -264,14 +304,6 @@ struct ProductionDetailView: View {
                                : production.lensKit.joined(separator: ", "))
                 LabeledContent("Filtres", value: production.filterKit.map(\.name).joined(separator: ", "))
             }
-        }
-        .navigationTitle(production.name)
-        .toolbar {
-            Button("Réglages", systemImage: "slider.horizontal.3") { editing = true }
-                .accessibilityIdentifier("edit-production")
-        }
-        .sheet(isPresented: $addingDay) { DayEditor(production: production, day: nil, repository: repository) }
-        .sheet(isPresented: $editing) { ProductionEditor(repository: repository, production: production) }
     }
 }
 
