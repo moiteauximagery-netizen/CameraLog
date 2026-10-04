@@ -14,6 +14,7 @@ struct ReportView: View {
     @State private var error: String?
     @State private var pendingDeletion: ShotSheet?
     @State private var editingRoll: Roll?
+    @State private var exporting = false
 
     private var rolls: [Roll] {
         report.orderedRolls.reversed().filter { !$0.currentSheets.isEmpty }
@@ -81,6 +82,15 @@ struct ReportView: View {
             Text(deletionMessage(sheet))
         }
         .sheet(item: $editingRoll) { roll in RollEditor(roll: roll, repository: repository) }
+        .toolbar {
+            Button("Exporter", systemImage: "square.and.arrow.up") { exporting = true }
+                .accessibilityIdentifier("export-report")
+        }
+        .sheet(isPresented: $exporting) {
+            if let day = report.day {
+                ExportView(day: day, repository: repository, camera: report.camera)
+            }
+        }
         .logError($error)
     }
 

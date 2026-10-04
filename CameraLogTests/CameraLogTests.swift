@@ -744,6 +744,58 @@ import SwiftData
         XCTAssertEqual(ProjectSearch.run(production, filters: filters).hits.map(\.sheet.id), [a.id, b.id])
     }
 
+    /// Same columns, units and value forms as a real ZoeLog export (files received on 4 October 2026).
+    func testExportsMatchTheZoeLogFilesReadBySilverstack() throws {
+        let (_, repo) = try setupStore()
+        let production = try repo.addProduction(name: "Prod")
+        let date = Calendar.current.date(from: DateComponents(year: 2026, month: 9, day: 24, hour: 12))!
+        let day = try repo.addDay(to: production, number: 12, date: date, location: "Plateau 3")
+        let report = try repo.addNextCamera(to: day)
+        let a = try repo.saveSheet(sheetDraft("14", "A", roll: "1", [.lens: "50 mm", .tStop: "2.8 ⅓",
+            .filters: "ND 0.6 + BPM 1/4", .iso: "800", .whiteBalance: "5600", .fps: "23,976", .shutter: "172.8"]),
+            sheet: nil, in: report)
+        let t1 = try repo.addNextTake(to: a)
+        try repo.toggleCircle(t1)
+        try repo.renameTake(try repo.addNextTake(to: a), typed: "2PU")
+        let b = try repo.saveSheet(sheetDraft("24", "3", roll: "A001", [.lens: "35mm"]), sheet: nil, in: report)
+        let fc = try repo.addNextTake(to: b)
+        try repo.updateTake(fc, label: "", statuses: [], notes: "batterie")
+        try repo.renameTake(fc, typed: "FC")
+
+        let csv = ReportExport.csv(day: day, reports: [report])
+        XCTAssertFalse(csv.hasSuffix("\n"), "No final line break, like ZoeLog")
+        let lines = csv.components(separatedBy: "\r\n")
+        XCTAssertEqual(lines.count, 4)
+        XCTAssertEqual(lines[0], #""Scene","Date","Camera","Roll","Take","Clip","Circled","Lens","Filters","Stop","Focus","Lens Height","Color Temp","FPS","Shutter","ISO","Time Code","Tilt","Lut","Aspect Ratio","Format","Resolution","Description","Notes","Origin Date","Take Origin""#)
+        XCTAssertTrue(lines[1].hasPrefix(#""14A","2026-09-24","A","A001","1","1","true","50mm","ND 0.6 + BPM 1/4","T2.8 1/3",,,"5600K","23.976fps","172.8 degrees","800EI",,,,,,,,,""#), lines[1])
+        XCTAssertTrue(lines[2].hasPrefix(#""14A","2026-09-24","A","A001","2PU","2","false","#), lines[2])
+        XCTAssertTrue(lines[3].hasPrefix(#""24/3","2026-09-24","A","A001","FC","3","false","35mm",,,,,,,,,,,,,,,,"batterie","#), lines[3])
+        XCTAssertEqual(lines[1].components(separatedBy: ",\"2026").count, 4, "Date, Origin Date and Take Origin")
+
+        let object = try JSONSerialization.jsonObject(with: ReportExport.json(production: production, day: day, reports: [report]))
+        let root = try XCTUnwrap(object as? [String: Any])
+        XCTAssertEqual(root["production_title"] as? String, "Prod")
+        let rolls = try XCTUnwrap(root["reports"] as? [[String: Any]])
+        XCTAssertEqual(rolls.first?["roll"] as? String, "A001")
+        XCTAssertEqual(rolls.first?["camera"] as? String, "A")
+        XCTAssertEqual(rolls.first?["shooting_date"] as? String, "2026-09-24")
+        let entries = try XCTUnwrap(rolls.first?["entries"] as? [[String: Any]])
+        XCTAssertEqual(entries.map { $0["scene"] as? String }, ["14A", "24/3"])
+        let takes = try XCTUnwrap(entries.first?["takes"] as? [[String: Any]])
+        XCTAssertEqual(takes.map { $0["name"] as? String }, ["1", "2PU"])
+        XCTAssertEqual(takes.map { $0["clip"] as? Int }, [1, 2])
+        XCTAssertEqual(takes.map { $0["circled"] as? Bool }, [true, false])
+        let log = try XCTUnwrap(entries.first?["log_data"] as? [String: String])
+        XCTAssertEqual(log["Shutter"], "172.8∢"); XCTAssertEqual(log["Stop"], "T2.8 1/3")
+        XCTAssertTrue(entries.first?["slate"] is NSNull)
+
+        let pdf = ReportPDF.make(production: production, day: day, reports: [report])
+        XCTAssertEqual(String(decoding: pdf.prefix(4), as: UTF8.self), "%PDF")
+        XCTAssertEqual(ReportExport.baseName(production: production, day: day, camera: report.camera),
+                       "Prod-DAY12-2026-09-24-CAM-A")
+        XCTAssertEqual(ReportExport.sceneLabel(scene: "24", shot: ""), "24")
+    }
+
     func testSampleData() throws {
         let (container, repo) = try setupStore()
         try SampleData.load(into: repo)

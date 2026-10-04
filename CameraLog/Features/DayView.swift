@@ -4,6 +4,7 @@ struct DayView: View {
     let day: ShootDay
     let repository: CameraLogRepository
     @State private var editingDay = false
+    @State private var exporting = false
     @State private var editingCamera: Camera?
     @State private var pendingDeletion: CameraReport?
     @State private var error: String?
@@ -54,9 +55,12 @@ struct DayView: View {
         }
         .navigationTitle("DAY \(day.number)")
         .toolbar {
+            Button("Exporter", systemImage: "square.and.arrow.up") { exporting = true }
+                .accessibilityIdentifier("export-day")
             Button("Modifier", systemImage: "pencil") { editingDay = true }
                 .accessibilityIdentifier("edit-day")
         }
+        .sheet(isPresented: $exporting) { ExportView(day: day, repository: repository) }
         .sheet(isPresented: $editingDay) {
             if let production = day.production {
                 DayEditor(production: production, day: day, repository: repository)

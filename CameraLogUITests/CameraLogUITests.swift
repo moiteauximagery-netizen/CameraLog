@@ -214,5 +214,10 @@ final class CameraLogUITests: XCTestCase {
         XCTAssertTrue(details.waitForExistence(timeout: 5))
         wait(details, labelContains: "Plateau 3 bis")
         attach(app, "11 Lieu modifié")
+
+        app.buttons["export-day"].tap()
+        let share = app.descendants(matching: .any)["share-export"].firstMatch
+        XCTAssertTrue(share.waitForExistence(timeout: 10), "PDF and CSV are ready to share")
+        attach(app, "12 Export")
     }
 }
