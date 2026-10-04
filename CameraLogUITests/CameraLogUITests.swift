@@ -225,7 +225,9 @@ final class CameraLogUITests: XCTestCase {
 
         // Camera B: native ISO set from its swipe action, shown at once on the day.
         app.buttons["camera-B"].swipeLeft()
-        app.buttons["Modifier"].firstMatch.tap()
+        let editCamera = app.buttons["edit-camera-B"]
+        XCTAssertTrue(editCamera.waitForExistence(timeout: 5))
+        editCamera.tap()
         let iso = app.textFields["native-iso"]
         XCTAssertTrue(iso.waitForExistence(timeout: 5))
         attach(app, "10b Couleur et ISO natif")

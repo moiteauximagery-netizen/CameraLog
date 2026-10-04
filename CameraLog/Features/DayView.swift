@@ -44,7 +44,9 @@ struct DayView: View {
                     .swipeActions {
                         Button("Supprimer", role: .destructive) { pendingDeletion = report }
                         if let camera = report.camera {
-                            Button("Modifier") { editingCamera = camera }.tint(.gray)
+                            Button("Modifier") { editingCamera = camera }
+                                .tint(.gray)
+                                .accessibilityIdentifier("edit-camera-\(camera.name)")
                         }
                     }
                 }
