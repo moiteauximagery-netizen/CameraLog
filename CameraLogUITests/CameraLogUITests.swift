@@ -218,11 +218,11 @@ final class CameraLogUITests: XCTestCase {
         XCTAssertTrue(day.waitForExistence(timeout: 5))
         day.swipeLeft()
         app.buttons["delete-day-12"].tap()
-        let next = app.buttons["Continuer"]
+        let next = app.buttons["delete-day-continue"].firstMatch
         XCTAssertTrue(next.waitForExistence(timeout: 5))
         attach(app, "13 Première confirmation")
         next.tap()
-        let confirm = app.buttons["Supprimer définitivement"]
+        let confirm = app.buttons["Supprimer définitivement"].firstMatch
         XCTAssertTrue(confirm.waitForExistence(timeout: 5))
         XCTAssertTrue(day.exists, "Nothing is deleted before the second confirmation")
         attach(app, "14 Seconde confirmation")
