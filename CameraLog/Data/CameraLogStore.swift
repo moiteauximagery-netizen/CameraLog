@@ -208,6 +208,15 @@ enum CameraLogStore {
 
     func deleteReport(_ report: CameraReport) throws { context.delete(report); try commit() }
 
+    /// What deleting a day removes: camera reports, sheets and takes. Production cameras stay.
+    func deletionSummary(of day: ShootDay) -> (cameras: Int, sheets: Int, takes: Int) {
+        let reports = day.reports.filter { $0.day?.id == day.id }
+        let rolls = reports.flatMap(\.rolls)
+        return (reports.count, rolls.flatMap(\.currentSheets).count, rolls.flatMap(\.takes).count)
+    }
+
+    func deleteDay(_ day: ShootDay) throws { context.delete(day); try commit() }
+
     func updateRoll(_ roll: Roll, name: String, card: String, reel: String) throws {
         let name = try RollNaming.normalized(required(name, "Le roll"), camera: roll.report?.camera?.name)
         let others = (roll.report?.rolls ?? []).filter { $0.id != roll.id }

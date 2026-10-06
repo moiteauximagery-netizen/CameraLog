@@ -209,6 +209,27 @@ final class CameraLogUITests: XCTestCase {
         XCTAssertTrue(app.buttons["take-C002"].waitForExistence(timeout: 5), "The sheet opens directly")
     }
 
+    @MainActor func testDeletingADayAsksTwice() throws {
+        let app = launch()
+        let production = app.buttons["production-LES OMBRES"]
+        XCTAssertTrue(production.waitForExistence(timeout: 15))
+        production.tap()
+        let day = app.buttons["day-12"]
+        XCTAssertTrue(day.waitForExistence(timeout: 5))
+        day.swipeLeft()
+        app.buttons["delete-day-12"].tap()
+        let next = app.buttons["Continuer"]
+        XCTAssertTrue(next.waitForExistence(timeout: 5))
+        attach(app, "13 Première confirmation")
+        next.tap()
+        let confirm = app.buttons["Supprimer définitivement"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        XCTAssertTrue(day.exists, "Nothing is deleted before the second confirmation")
+        attach(app, "14 Seconde confirmation")
+        confirm.tap()
+        XCTAssertTrue(day.waitForNonExistence(timeout: 5))
+    }
+
     @MainActor func testNewCameraAndDayEditsAppearImmediately() throws {
         let app = launch()
         let production = app.buttons["production-LES OMBRES"]

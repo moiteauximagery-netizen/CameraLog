@@ -320,6 +320,9 @@ struct ProductionDetailView: View {
     @State private var filters = SearchFilters()
     @State private var facetPicker: SearchFacet?
     @State private var showTakes = false
+    @State private var dayToDelete: ShootDay?
+    @State private var confirmingDayDeletion = false
+    @State private var error: String?
     var body: some View {
         let _ = repository.revision
         let result = ProjectSearch.run(production, filters: filters)
@@ -356,6 +359,31 @@ struct ProductionDetailView: View {
                 .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $addingDay) { DayEditor(production: production, day: nil, repository: repository) }
+        // First confirmation: what will be removed.
+        .confirmationDialog("Supprimer DAY \(dayToDelete?.number ?? 0) ?", isPresented: Binding(
+            get: { dayToDelete != nil && !confirmingDayDeletion }, set: { if !$0 && !confirmingDayDeletion { dayToDelete = nil } }
+        ), titleVisibility: .visible, presenting: dayToDelete) { _ in
+            Button("Continuer", role: .destructive) { confirmingDayDeletion = true }
+                .accessibilityIdentifier("delete-day-continue")
+            Button("Annuler", role: .cancel) { dayToDelete = nil }
+        } message: { day in
+            let summary = repository.deletionSummary(of: day)
+            Text("\(summary.cameras) caméra(s), \(summary.sheets) fiche(s) et \(summary.takes) prise(s) de cette journée seront effacées. Les caméras restent dans la production.")
+        }
+        // Second confirmation: final.
+        .alert("Suppression définitive de DAY \(dayToDelete?.number ?? 0)", isPresented: $confirmingDayDeletion,
+               presenting: dayToDelete) { day in
+            Button("Supprimer définitivement", role: .destructive) {
+                do { try repository.deleteDay(day) }
+                catch { self.error = error.localizedDescription }
+                dayToDelete = nil
+            }
+            .accessibilityIdentifier("delete-day-confirm")
+            Button("Annuler", role: .cancel) { dayToDelete = nil }
+        } message: { _ in
+            Text("Cette action ne peut pas être annulée.")
+        }
+        .logError($error)
         .sheet(isPresented: $editing) { ProductionEditor(repository: repository, production: production) }
     }
 
@@ -372,6 +400,10 @@ struct ProductionDetailView: View {
                         }.padding(.vertical, 6)
                     }
                     .accessibilityIdentifier("day-\(day.number)")
+                    .swipeActions {
+                        Button("Supprimer", role: .destructive) { dayToDelete = day }
+                            .accessibilityIdentifier("delete-day-\(day.number)")
+                    }
                 }
                 Button("Ajouter une journée", systemImage: "plus") { addingDay = true }
                     .frame(minHeight: 48)

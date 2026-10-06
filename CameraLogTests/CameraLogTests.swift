@@ -960,6 +960,24 @@ import SwiftData
         XCTAssertEqual(production.lensKit, ["S4 18mm", "S4 50mm"])
     }
 
+    func testDeletingADayKeepsProductionCameras() throws {
+        let (container, repo) = try setupStore()
+        let (production, report) = try report(repo)
+        let day = try XCTUnwrap(report.day)
+        let sheet = try repo.saveSheet(sheetDraft("1", "A", roll: "A001"), sheet: nil, in: report)
+        try repo.addNextTake(to: sheet); try repo.addNextTake(to: sheet)
+        let other = try repo.addDay(to: production, number: 13, date: Date())
+        try repo.addNextCamera(to: other)
+        let summary = repo.deletionSummary(of: day)
+        XCTAssertEqual(summary.cameras, 1); XCTAssertEqual(summary.sheets, 1); XCTAssertEqual(summary.takes, 2)
+        try repo.deleteDay(day)
+        XCTAssertEqual(production.days.map(\.number), [13])
+        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<TakeEntry>()), 0)
+        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<ShotSheet>()), 0)
+        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<CameraReport>()), 1)
+        XCTAssertEqual(production.cameras.count, 1, "Camera A stays in the production")
+    }
+
     func testSampleData() throws {
         let (container, repo) = try setupStore()
         try SampleData.load(into: repo)
