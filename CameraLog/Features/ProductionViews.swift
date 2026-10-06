@@ -322,6 +322,7 @@ struct ProductionDetailView: View {
     @State private var showTakes = false
     @State private var dayToDelete: ShootDay?
     @State private var confirmingDayDeletion = false
+    @State private var dialogDismissed = false
     @State private var error: String?
     var body: some View {
         let _ = repository.revision
@@ -361,9 +362,13 @@ struct ProductionDetailView: View {
         .sheet(isPresented: $addingDay) { DayEditor(production: production, day: nil, repository: repository) }
         // First confirmation: what will be removed.
         .confirmationDialog("Supprimer DAY \(dayToDelete?.number ?? 0) ?", isPresented: Binding(
-            get: { dayToDelete != nil && !confirmingDayDeletion }, set: { if !$0 && !confirmingDayDeletion { dayToDelete = nil } }
+            get: { dayToDelete != nil && !confirmingDayDeletion && !dialogDismissed },
+            set: { if !$0 { dialogDismissed = true } }
         ), titleVisibility: .visible, presenting: dayToDelete) { _ in
-            Button("Continuer", role: .destructive) { confirmingDayDeletion = true }
+            Button("Continuer", role: .destructive) {
+                // Let the first dialog close before the second confirmation appears.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { confirmingDayDeletion = true }
+            }
                 .accessibilityIdentifier("delete-day-continue")
             Button("Annuler", role: .cancel) { dayToDelete = nil }
         } message: { day in
@@ -401,7 +406,11 @@ struct ProductionDetailView: View {
                     }
                     .accessibilityIdentifier("day-\(day.number)")
                     .swipeActions {
-                        Button("Supprimer", role: .destructive) { dayToDelete = day }
+                        Button("Supprimer", role: .destructive) {
+                            dialogDismissed = false
+                            confirmingDayDeletion = false
+                            dayToDelete = day
+                        }
                             .accessibilityIdentifier("delete-day-\(day.number)")
                     }
                 }
